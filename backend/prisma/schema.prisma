@@ -1,0 +1,352 @@
+// ─── AlumniConnect Platform – Prisma Schema ─────────────────────────────────
+// datasource: SQLite (swap to PostgreSQL for production and re-enable native enums)
+//
+// ENUM VALUES (enforced at application layer):
+//   UserRole:              STUDENT | ALUMNI | FACULTY | ADMIN
+//   VerificationStatus:    PENDING | UNDER_REVIEW | VERIFIED | REJECTED
+//   VerificationMethod:    REGISTER_NUMBER | GRADUATION_CERTIFICATE | INSTITUTIONAL_EMAIL | ADMIN_MANUAL | ALUMNI_REFERENCE
+//   SupportType:           MENTORING | REFERRALS | MOCK_INTERVIEWS | GUEST_LECTURES | RESUME_REVIEWS | PROJECT_GUIDANCE | STARTUP_INVESTMENT
+//   SupportRequestStatus:  PENDING | ACCEPTED | DECLINED | COMPLETED
+//   ReunionStatus:         PLANNING | DATE_VOTING | VENUE_VOTING | CONFIRMED | COMPLETED
+//   AttendanceStatus:      GOING | MAYBE | NOT_GOING
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  MODELS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ── User ────────────────────────────────────────────────────────────────────
+model User {
+  id              Int      @id @default(autoincrement())
+  email           String   @unique
+  passwordHash    String
+  name            String
+  role            String   @default("STUDENT") // UserRole
+  phone           String?
+  profilePhotoUrl String?
+  resetToken        String?
+  resetTokenExpiry  DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // 1:1 optional profile
+  alumniProfile AlumniProfile?
+
+  // Relations where user acts in various capacities
+  coordinatedBatches Batch[]              @relation("BatchCoordinator")
+  supportRequests    SupportRequest[]     @relation("SupportRequester")
+  dateVotes          ReunionDateVote[]
+  venueVotes         ReunionVenueVote[]
+  attendance         ReunionAttendance[]
+  paidExpenses       ReunionExpense[]     @relation("ExpensePayer")
+  uploadedPhotos     ReunionPhoto[]
+  announcements      Announcement[]       @relation("AnnouncementAuthor")
+  announcementReads  AnnouncementRead[]
+  notifications      Notification[]
+
+  // Admin reviewing verification requests
+  reviewedVerifications VerificationRequest[] @relation("VerificationReviewer")
+
+  // Mentorship messages
+  sentMentorshipMessages     MentorshipMessage[] @relation("SentMessages")
+  receivedMentorshipMessages MentorshipMessage[] @relation("ReceivedMessages")
+
+  @@index([role])
+  @@index([email])
+}
+
+// ── AlumniProfile ───────────────────────────────────────────────────────────
+model AlumniProfile {
+  id                       Int       @id @default(autoincrement())
+  userId                   Int       @unique
+  registerNumber           String?
+  graduationYear           Int
+  department               String
+  degree                   String
+  currentCompany           String?
+  currentDesignation       String?
+  location                 String?
+  linkedinUrl              String?
+  bio                      String?
+  skills                   String?
+  interests                String?
+  isVerified               Boolean   @default(false)
+  verificationStatus       String    @default("PENDING") // VerificationStatus
+  isAway                   Boolean   @default(false)
+  emailVerificationToken   String?
+  emailVerificationExpiry  DateTime?
+
+  user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  verificationRequests VerificationRequest[] @relation("ProfileVerification")
+  availabilityStatuses AvailabilityStatus[]
+  supportRequests      SupportRequest[]      @relation("SupportProvider")
+
+  // Self-referencing: this alumni can vouch for others
+  referencedVerifications VerificationRequest[] @relation("ReferenceAlumni")
+
+  @@index([isVerified])
+  @@index([graduationYear])
+  @@index([department])
+  @@index([verificationStatus])
+  @@index([isAway])
+}
+
+// ── VerificationRequest ─────────────────────────────────────────────────────
+model VerificationRequest {
+  id                Int      @id @default(autoincrement())
+  alumniProfileId   Int
+  method            String   // VerificationMethod
+  documentUrl       String?
+  referenceAlumniId Int?
+  status            String   @default("PENDING") // VerificationStatus
+  reviewedByAdminId Int?
+  reviewNotes       String?
+  submittedAt       DateTime @default(now())
+  reviewedAt        DateTime?
+
+  alumniProfile   AlumniProfile  @relation("ProfileVerification", fields: [alumniProfileId], references: [id], onDelete: Cascade)
+  referenceAlumni AlumniProfile? @relation("ReferenceAlumni", fields: [referenceAlumniId], references: [id], onDelete: SetNull)
+  reviewedByAdmin User?          @relation("VerificationReviewer", fields: [reviewedByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([alumniProfileId])
+  @@index([status])
+  @@index([referenceAlumniId])
+  @@index([reviewedByAdminId])
+}
+
+// ── AvailabilityStatus ──────────────────────────────────────────────────────
+model AvailabilityStatus {
+  id               Int     @id @default(autoincrement())
+  alumniProfileId  Int
+  supportType      String  // SupportType
+  isActive         Boolean @default(true)
+  capacityPerMonth Int?
+  notes            String?
+
+  alumniProfile AlumniProfile @relation(fields: [alumniProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([alumniProfileId, supportType])
+  @@index([supportType])
+  @@index([isActive])
+}
+
+// ── SupportRequest ──────────────────────────────────────────────────────────
+model SupportRequest {
+  id                Int      @id @default(autoincrement())
+  requestedByUserId Int
+  alumniProfileId   Int
+  supportType       String   // SupportType
+  message           String
+  replyMessage      String?
+  status            String   @default("PENDING") // SupportRequestStatus
+  createdAt         DateTime @default(now())
+
+  requestedBy   User          @relation("SupportRequester", fields: [requestedByUserId], references: [id], onDelete: Cascade)
+  alumniProfile AlumniProfile @relation("SupportProvider", fields: [alumniProfileId], references: [id], onDelete: Cascade)
+  messages      MentorshipMessage[]
+
+  @@index([requestedByUserId])
+  @@index([alumniProfileId])
+  @@index([status])
+  @@index([supportType])
+}
+
+// ── MentorshipMessage ─────────────────────────────────────────────────────────
+model MentorshipMessage {
+  id               Int      @id @default(autoincrement())
+  supportRequestId Int
+  senderId         Int
+  receiverId       Int
+  message          String
+  createdAt        DateTime @default(now())
+
+  supportRequest SupportRequest @relation(fields: [supportRequestId], references: [id], onDelete: Cascade)
+  sender         User           @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver       User           @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@index([supportRequestId])
+  @@index([senderId])
+  @@index([receiverId])
+}
+
+// ── Batch ────────────────────────────────────────────────────────────────────
+model Batch {
+  id                 Int    @id @default(autoincrement())
+  department         String
+  graduationYear     Int
+  coordinatorUserId  Int
+
+  coordinator   User           @relation("BatchCoordinator", fields: [coordinatorUserId], references: [id])
+  reunions      Reunion[]
+  announcements Announcement[]
+
+  @@unique([department, graduationYear])
+  @@index([coordinatorUserId])
+}
+
+// ── Reunion ─────────────────────────────────────────────────────────────────
+model Reunion {
+  id                  Int       @id @default(autoincrement())
+  batchId             Int
+  title               String
+  description         String    @default("")
+  proposedDates       String    // JSON array of date-option strings
+  venueOptions        String    // JSON array of {name, address, votes}
+  finalDate           DateTime?
+  finalVenue          String?
+  status              String    @default("PLANNING") // ReunionStatus
+  countdownTargetDate DateTime?
+
+  batch         Batch               @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  dateVotes     ReunionDateVote[]
+  venueVotes    ReunionVenueVote[]
+  attendance    ReunionAttendance[]
+  expenses      ReunionExpense[]
+  photos        ReunionPhoto[]
+  announcements Announcement[]      @relation("ReunionAnnouncement")
+
+  @@index([batchId])
+  @@index([status])
+}
+
+// ── ReunionDateVote ─────────────────────────────────────────────────────────
+model ReunionDateVote {
+  id                Int @id @default(autoincrement())
+  reunionId         Int
+  userId            Int
+  chosenOptionIndex Int
+
+  reunion Reunion @relation(fields: [reunionId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([reunionId, userId])
+  @@index([reunionId])
+  @@index([userId])
+}
+
+// ── ReunionVenueVote ────────────────────────────────────────────────────────
+model ReunionVenueVote {
+  id                Int @id @default(autoincrement())
+  reunionId         Int
+  userId            Int
+  chosenOptionIndex Int
+
+  reunion Reunion @relation(fields: [reunionId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([reunionId, userId])
+  @@index([reunionId])
+  @@index([userId])
+}
+
+// ── ReunionAttendance ───────────────────────────────────────────────────────
+model ReunionAttendance {
+  id                  Int     @id @default(autoincrement())
+  reunionId           Int
+  userId              Int
+  status              String  @default("GOING") // AttendanceStatus
+  accommodationNeeded Boolean @default(false)
+  dietaryNotes        String?
+
+  reunion Reunion @relation(fields: [reunionId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([reunionId, userId])
+  @@index([reunionId])
+  @@index([userId])
+}
+
+// ── ReunionExpense ──────────────────────────────────────────────────────────
+model ReunionExpense {
+  id                   Int      @id @default(autoincrement())
+  reunionId            Int
+  title                String
+  amount               Float
+  paidByUserId         Int
+  splitBetweenUserIds  String   // JSON array of user IDs
+  createdAt            DateTime @default(now())
+
+  reunion Reunion @relation(fields: [reunionId], references: [id], onDelete: Cascade)
+  paidBy  User    @relation("ExpensePayer", fields: [paidByUserId], references: [id], onDelete: Cascade)
+
+  @@index([reunionId])
+  @@index([paidByUserId])
+}
+
+// ── ReunionPhoto ────────────────────────────────────────────────────────────
+model ReunionPhoto {
+  id               Int      @id @default(autoincrement())
+  reunionId        Int
+  uploadedByUserId Int
+  photoUrl         String
+  caption          String?
+  createdAt        DateTime @default(now())
+
+  reunion    Reunion @relation(fields: [reunionId], references: [id], onDelete: Cascade)
+  uploadedBy User    @relation(fields: [uploadedByUserId], references: [id], onDelete: Cascade)
+
+  @@index([reunionId])
+  @@index([uploadedByUserId])
+}
+
+// ── Announcement ────────────────────────────────────────────────────────────
+model Announcement {
+  id           Int      @id @default(autoincrement())
+  batchId      Int?     // null = global announcement
+  reunionId    Int?     // null = not tied to a reunion
+  authorUserId Int
+  title        String
+  body         String
+  createdAt    DateTime @default(now())
+
+  batch   Batch?   @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  reunion Reunion? @relation("ReunionAnnouncement", fields: [reunionId], references: [id], onDelete: Cascade)
+  author  User     @relation("AnnouncementAuthor", fields: [authorUserId], references: [id], onDelete: Cascade)
+  reads   AnnouncementRead[]
+
+  @@index([batchId])
+  @@index([reunionId])
+  @@index([authorUserId])
+  @@index([createdAt])
+}
+
+// ── AnnouncementRead ────────────────────────────────────────────────────────
+model AnnouncementRead {
+  id               Int      @id @default(autoincrement())
+  announcementId   Int
+  userId           Int
+  readAt           DateTime @default(now())
+
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([announcementId, userId])
+  @@index([announcementId])
+  @@index([userId])
+}
+
+// ── Notification ────────────────────────────────────────────────────────────
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  type      String   // VOUCH_REQUEST | VERIFICATION_APPROVED | VERIFICATION_REJECTED | SUPPORT_REQUEST | SUPPORT_ACCEPTED | SUPPORT_DECLINED
+  title     String
+  message   String
+  data      String?  // JSON string for metadata (profileId, requestId, etc.)
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+}
