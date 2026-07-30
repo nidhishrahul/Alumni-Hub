@@ -3,6 +3,8 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { prisma, JWT_SECRET, requireAuth, loadUser } = require('../middleware/auth');
+// ADDED FOR VERIFICATION FEATURE
+const { triggerAIVerification } = require('./ai-verification');
 
 const router = express.Router();
 const USER_ROLES = new Set(['STUDENT', 'ALUMNI', 'FACULTY']);

@@ -48,6 +48,10 @@ async function loadUser(req, res, next) {
                         bio: true,
                         skills: true,
                         interests: true,
+                        // ADDED FOR VERIFICATION FEATURE
+                        riskScore: true,
+                        aiVerificationStatus: true,
+                        verifiedAt: true,
                     },
                 },
             },

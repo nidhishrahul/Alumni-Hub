@@ -1,6 +1,8 @@
 import { useAuth } from '../../context/AuthContext';
 import { User, Mail, GraduationCap, Building2, Briefcase, MapPin, Award, Edit, Save, X, Plus, CheckCircle2, AlertCircle, Globe, Phone } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import VerificationBadge from '../../components/VerificationBadge';
+import VerificationModal from '../../components/VerificationModal';
 
 export default function Profile() {
     const { user, updateProfile } = useAuth();
@@ -8,6 +10,8 @@ export default function Profile() {
     const [saving, setSaving] = useState(false);
     const [successMsg, setSuccessMsg] = useState('');
     const [errorMsg, setErrorMsg] = useState('');
+
+    const [isModalOpen, setIsModalOpen] = useState(false);
 
     const profile = user?.alumniProfile || {};
 
@@ -151,10 +155,13 @@ export default function Profile() {
                         <div className="flex items-center gap-3 flex-wrap">
                             <h1 className="text-2xl font-black text-white">{displayName}</h1>
                             <span className="badge badge-primary capitalize">{displayRole.toLowerCase()}</span>
-                            {profile.isVerified && (
-                                <span className="badge bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                                    ✓ Verified Alumni
-                                </span>
+                            {user?.role === 'ALUMNI' && (
+                                <VerificationBadge
+                                    status={profile.aiVerificationStatus || (profile.isVerified ? 'VERIFIED_LOW_RISK' : 'PENDING')}
+                                    riskScore={profile.riskScore}
+                                    compact={true}
+                                    onClick={() => setIsModalOpen(true)}
+                                />
                             )}
                         </div>
                         <p className="text-sm text-surface-400 mt-1">
@@ -475,6 +482,17 @@ export default function Profile() {
                     </div>
                 </div>
             </div>
+
+            {/* Verification Modal */}
+            <VerificationModal
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                initialData={profile}
+                onVerificationSuccess={() => {
+                    // Refresh window profile data or page
+                    window.location.reload();
+                }}
+            />
         </div>
     );
 }

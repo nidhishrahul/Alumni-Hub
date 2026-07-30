@@ -14,6 +14,8 @@ import MentorshipRequests from './pages/alumni/MentorshipRequests';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import UserManagement from './pages/admin/UserManagement';
 import Analytics from './pages/admin/Analytics';
+// ADDED FOR VERIFICATION FEATURE
+import AIVerificationQueue from './pages/admin/AIVerificationQueue';
 import Events from './pages/shared/Events';
 import NetworkGraph from './pages/shared/NetworkGraph';
 import AIChat from './pages/shared/AIChat';
@@ -112,6 +114,8 @@ function App() {
         <Route path="dashboard" element={<AdminDashboard />} />
         <Route path="users" element={<UserManagement />} />
         <Route path="analytics" element={<Analytics />} />
+        {/* ADDED FOR VERIFICATION FEATURE */}
+        <Route path="ai-verification" element={<AIVerificationQueue />} />
         <Route index element={<Navigate to="dashboard" />} />
       </Route>
 

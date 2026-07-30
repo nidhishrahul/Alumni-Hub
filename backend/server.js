@@ -11,6 +11,8 @@ const reunionRoutes = require('./routes/reunions');
 const verificationRoutes = require('./routes/verification');
 const notificationRoutes = require('./routes/notifications');
 const alumniDirectoryRoutes = require('./routes/alumni-directory');
+// ADDED FOR VERIFICATION FEATURE
+const aiVerificationRoutes = require('./routes/ai-verification');
 
 const app = express();
 const server = http.createServer(app);
@@ -42,6 +44,8 @@ app.use('/api/reunions', reunionRoutes);
 app.use('/api/verification', verificationRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/alumni-directory', alumniDirectoryRoutes);
+// ADDED FOR VERIFICATION FEATURE
+app.use('/api/ai-verification', aiVerificationRoutes);
 
 // Serve uploaded files
 app.use('/uploads', express.static('uploads'));

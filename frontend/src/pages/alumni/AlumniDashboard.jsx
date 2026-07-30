@@ -3,6 +3,9 @@ import { useAuth } from '../../context/AuthContext';
 import { Users, Briefcase, Heart, Calendar, TrendingUp, Target, Award, CheckCircle, XCircle, Clock, Loader2, Inbox } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import api from '../../services/api';
+// ADDED FOR VERIFICATION FEATURE
+import VerificationBadge from '../../components/VerificationBadge';
+import VerificationModal from '../../components/VerificationModal';
 
 const engagementData = [
     { name: 'Mentoring', value: 35, color: '#3b82f6' },
@@ -24,9 +27,29 @@ export default function AlumniDashboard() {
     const [processing, setProcessing] = useState(null);
     const [toast, setToast] = useState(null);
 
+    const [verificationState, setVerificationState] = useState(user?.alumniProfile || null);
+
     useEffect(() => {
         fetchIncomingRequests();
-    }, []);
+        if (user?.alumniProfile?.id) {
+            setVerificationState(user.alumniProfile);
+            // Poll for verification updates if pending
+            if (!user.alumniProfile.aiVerificationStatus || user.alumniProfile.aiVerificationStatus === 'PENDING') {
+                const interval = setInterval(async () => {
+                    try {
+                        const res = await api.get(`/api/ai-verification/status/${user.alumniProfile.id}`);
+                        setVerificationState(prev => ({ ...prev, ...res.data }));
+                        if (res.data.aiVerificationStatus && res.data.aiVerificationStatus !== 'PENDING') {
+                            clearInterval(interval);
+                        }
+                    } catch (e) {
+                        // ignore background polling errors
+                    }
+                }, 3000);
+                return () => clearInterval(interval);
+            }
+        }
+    }, [user]);
 
     const fetchIncomingRequests = async () => {
         try {
@@ -84,13 +107,15 @@ export default function AlumniDashboard() {
         { label: 'Events Attended', value: '12', icon: Calendar, color: 'text-accent-400', bg: 'bg-accent-500/10' },
     ];
 
+    const [isModalOpen, setIsModalOpen] = useState(false);
+
     return (
         <div className="space-y-6 animate-fade-in">
             {/* Toast */}
             {toast && (
                 <div className={`fixed top-6 right-6 z-50 px-5 py-3 rounded-xl border shadow-2xl backdrop-blur-xl animate-fade-in flex items-center gap-2 ${toast.type === 'success'
-                        ? 'bg-green-500/10 border-green-500/30 text-green-400'
-                        : 'bg-red-500/10 border-red-500/30 text-red-400'
+                    ? 'bg-green-500/10 border-green-500/30 text-green-400'
+                    : 'bg-red-500/10 border-red-500/30 text-red-400'
                     }`}>
                     {toast.type === 'success' && <CheckCircle className="w-4 h-4" />}
                     <span className="text-sm font-medium">{toast.message}</span>
@@ -112,8 +137,28 @@ export default function AlumniDashboard() {
                         You have <span className="text-white font-semibold">{pendingCount} pending mentorship requests</span> and{' '}
                         <span className="text-white font-semibold">{acceptedCount} active mentees</span>.
                     </p>
+                    {/* ADDED FOR VERIFICATION FEATURE */}
+                    {verificationState && (
+                        <div className="mt-3">
+                            <VerificationBadge
+                                status={verificationState.aiVerificationStatus}
+                                riskScore={verificationState.riskScore}
+                                onClick={() => setIsModalOpen(true)}
+                            />
+                        </div>
+                    )}
                 </div>
             </div>
+
+            {/* Verification Modal */}
+            <VerificationModal
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                initialData={verificationState || {}}
+                onVerificationSuccess={(data) => {
+                    setVerificationState(prev => ({ ...prev, ...data }));
+                }}
+            />
 
             {/* Stats */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

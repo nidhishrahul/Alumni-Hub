@@ -84,6 +84,11 @@ model AlumniProfile {
   emailVerificationToken   String?
   emailVerificationExpiry  DateTime?
 
+  // ADDED FOR VERIFICATION FEATURE — AI risk scoring fields
+  riskScore                Float?    // AI verification risk score (0-100)
+  aiVerificationStatus     String    @default("PENDING") // VERIFIED_LOW_RISK | PENDING_ADMIN_REVIEW | VERIFIED_BY_ADMIN | REJECTED_HIGH_RISK | REJECTED_BY_ADMIN
+  verifiedAt               DateTime? // When AI or admin verified this profile
+
   user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   verificationRequests VerificationRequest[] @relation("ProfileVerification")
   availabilityStatuses AvailabilityStatus[]
@@ -92,11 +97,16 @@ model AlumniProfile {
   // Self-referencing: this alumni can vouch for others
   referencedVerifications VerificationRequest[] @relation("ReferenceAlumni")
 
+  // ADDED FOR VERIFICATION FEATURE — AI review relations
+  aiReviewQueue       AIReviewQueue[]
+  verificationLogs    VerificationLog[]
+
   @@index([isVerified])
   @@index([graduationYear])
   @@index([department])
   @@index([verificationStatus])
   @@index([isAway])
+  @@index([aiVerificationStatus])
 }
 
 // ── VerificationRequest ─────────────────────────────────────────────────────
@@ -348,5 +358,39 @@ model Notification {
 
   @@index([userId])
   @@index([isRead])
+  @@index([createdAt])
+}
+
+// ── AIReviewQueue (ADDED FOR VERIFICATION FEATURE) ─────────────────────────
+model AIReviewQueue {
+  id                Int       @id @default(autoincrement())
+  alumniProfileId   Int
+  riskScore         Float
+  features          String?   // JSON string of ML feature breakdown
+  submittedAt       DateTime  @default(now())
+  reviewStatus      String    @default("PENDING") // PENDING | APPROVED | REJECTED
+  reviewedByAdminId Int?
+  reviewedAt        DateTime?
+  reviewNotes       String?
+
+  alumniProfile AlumniProfile @relation(fields: [alumniProfileId], references: [id], onDelete: Cascade)
+
+  @@index([reviewStatus])
+  @@index([alumniProfileId])
+}
+
+// ── VerificationLog (ADDED FOR VERIFICATION FEATURE) ───────────────────────
+model VerificationLog {
+  id              Int      @id @default(autoincrement())
+  alumniProfileId Int
+  action          String   // TRIGGER | AUTO_VERIFY | AUTO_REJECT | ADMIN_APPROVE | ADMIN_REJECT
+  riskScore       Float?
+  inputData       String?  // JSON of data sent to ML model
+  outputData      String?  // JSON of ML model response
+  createdAt       DateTime @default(now())
+
+  alumniProfile AlumniProfile @relation(fields: [alumniProfileId], references: [id], onDelete: Cascade)
+
+  @@index([alumniProfileId])
   @@index([createdAt])
 }

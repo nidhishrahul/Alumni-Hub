@@ -3,7 +3,8 @@ import { useAuth } from '../../context/AuthContext';
 import {
     LayoutDashboard, Users, GraduationCap, Briefcase, Calendar,
     MessageSquare, BarChart3, Network, UserCircle, LogOut, Bot,
-    Building2, Heart, ChevronLeft, ChevronRight, PartyPopper
+    Building2, Heart, ChevronLeft, ChevronRight, PartyPopper,
+    ShieldCheck // ADDED FOR VERIFICATION FEATURE
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -32,6 +33,8 @@ const navItems = {
         { path: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
         { path: '/admin/users', label: 'User Management', icon: Users },
         { path: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
+        // ADDED FOR VERIFICATION FEATURE
+        { path: '/admin/ai-verification', label: 'AI Verification', icon: ShieldCheck },
         { path: '/events', label: 'Events', icon: Calendar },
         { path: '/chat', label: 'AI Assistant', icon: Bot },
         { path: '/network', label: 'Network', icon: Network },
