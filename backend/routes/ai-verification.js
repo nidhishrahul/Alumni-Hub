@@ -319,10 +319,13 @@ router.post('/submit', requireAuth, upload.single('image'), async (req, res) => 
             links,
         } = req.body || {};
 
-        // Handle uploaded proof picture file
+        // Handle uploaded proof picture / PDF file
         let uploadedImageUrl = req.body?.imageUrl || '';
         if (req.file) {
+            console.log('📸 Uploaded file detected in Express backend:', req.file);
             uploadedImageUrl = `/uploads/certificates/${req.file.filename}`;
+        } else {
+            console.log('⚠️ No file attached in req.file (Form submission was text-only)');
         }
 
         // Validate that AT LEAST ONE credential was provided (no single field is mandatory!)
@@ -419,14 +422,39 @@ router.post('/submit', requireAuth, upload.single('image'), async (req, res) => 
         // Call Python ML service synchronously
         let result;
         try {
+            // Build flat payload matching the Python VerifyRequest schema
+            const mlPayload = {
+                name: submittedData.name || '',
+                email: submittedData.email || '',
+                department: submittedData.department || '',
+                degree: submittedData.degree || '',
+                graduationYear: submittedData.graduationYear || null,
+                registerNumber: submittedData.registerNumber || '',
+                linkedinUrl: submittedData.linkedinUrl || '',
+                currentCompany: submittedData.currentCompany || '',
+                currentDesignation: submittedData.currentDesignation || '',
+                location: submittedData.location || '',
+                bio: submittedData.bio || '',
+                skills: submittedData.skills || '',
+                interests: submittedData.interests || '',
+                phone: submittedData.phone || '',
+                resumeText: submittedData.resumeText || '',
+                profilePhotoUrl: submittedData.imageUrl || '',
+                imageFilePath: req.file ? req.file.path : '',
+                dbRecords: dbData,
+            };
+
             const mlRes = await fetch(`${AI_VERIFICATION_URL}/verify`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    submitted: submittedData,
-                    dbRecord: dbData,
-                }),
+                body: JSON.stringify(mlPayload),
             });
+
+            if (!mlRes.ok) {
+                const errText = await mlRes.text();
+                throw new Error(`ML service returned ${mlRes.status}: ${errText}`);
+            }
+
             result = await mlRes.json();
         } catch (mlErr) {
             console.warn('⚠️ Python ML service unavailable, running Node.js fallback evaluation:', mlErr.message);
@@ -510,6 +538,46 @@ router.post('/submit', requireAuth, upload.single('image'), async (req, res) => 
             });
         }
 
+        // ═════════════════════════════════════════════════════════════════════════
+        //  SENIOR SDE TERMINAL LOGGING — VERIFICATION SUBMISSION & MODEL OUTPUT
+        // ═════════════════════════════════════════════════════════════════════════
+        console.log('\n================================================================================');
+        console.log(' 🎓 ALUMNI AI VERIFICATION SUBMISSION EVALUATION');
+        console.log('================================================================================');
+        console.log(` 👤 User: ${profile.user.name} (${profile.user.email}) | User ID: ${profile.userId}`);
+        if (req.file) {
+            console.log(` 📷 ID Proof File Uploaded : ${req.file.filename} (${(req.file.size / 1024).toFixed(1)} KB)`);
+        } else if (uploadedImageUrl) {
+            console.log(` 📷 ID Proof Image URL     : ${uploadedImageUrl}`);
+        } else {
+            console.log(' 📷 ID Proof Image         : None Provided');
+        }
+        console.log(' 📝 Extracted Submitted Credentials:');
+        console.log(`    - Register No : ${submittedData.registerNumber || 'N/A'}`);
+        console.log(`    - Dept/Degree : ${submittedData.department || 'N/A'} / ${submittedData.degree || 'N/A'} (${submittedData.graduationYear || 'N/A'})`);
+        console.log(`    - LinkedIn    : ${submittedData.linkedinUrl || 'N/A'}`);
+        console.log(`    - Work Info   : ${submittedData.currentCompany || 'N/A'} (${submittedData.currentDesignation || 'N/A'})`);
+        console.log(' 🏢 University Database Cross-Reference:');
+        console.log(`    - DB Match Found : ${matchedProfile ? 'YES (' + matchedProfile.user.name + ')' : 'No cross-match found'}`);
+        console.log('\n 🤖 ML MODEL EVALUATION OUTPUT:');
+        console.log('    ----------------------------------------------------------------------------');
+        console.log(`    Risk Score     : ${riskScore.toFixed(1)} / 100`);
+        console.log(`    Classification : ${result.classification || finalStatus}`);
+        console.log(`    Fraud Prob     : ${result.fraudProbability !== undefined ? result.fraudProbability.toFixed(4) : (riskScore / 100).toFixed(4)}`);
+        console.log(`    Algorithm      : ${result.algorithm || 'CatBoost/RandomForest'}`);
+        if (result.extractedCollegeDetails) {
+            console.log('\n 📄 RESUME COLLEGE DETAILS EXTRACTED:');
+            console.log(`    - University : ${result.extractedCollegeDetails.university || 'N/A'}`);
+            console.log(`    - Degree     : ${result.extractedCollegeDetails.degree || 'N/A'}`);
+            console.log(`    - Department : ${result.extractedCollegeDetails.department || 'N/A'}`);
+            console.log(`    - Grad Year  : ${result.extractedCollegeDetails.graduation_year || 'N/A'}`);
+            console.log(`    - Reg Number : ${result.extractedCollegeDetails.register_number || 'N/A'}`);
+            console.log(`    - CGPA/Grade : ${result.extractedCollegeDetails.cgpa || 'N/A'}`);
+        }
+        console.log('\n 📊 Extracted Feature Vector:');
+        console.log(JSON.stringify(result.features || {}, null, 6));
+        console.log('================================================================================\n');
+
         return res.json({
             message: 'Verification evaluation complete',
             riskScore,
@@ -518,6 +586,8 @@ router.post('/submit', requireAuth, upload.single('image'), async (req, res) => 
             isVerified,
             features: result.features,
             algorithm: result.algorithm || 'CatBoost/RandomForest',
+            extractedCollegeDetails: result.extractedCollegeDetails || null,
+            ocrExtractedText: result.ocrExtractedText || null,
         });
 
     } catch (err) {

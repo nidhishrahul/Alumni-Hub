@@ -138,13 +138,22 @@ export default function VerificationModal({ isOpen, onClose, initialData = {}, o
                                     <ImageIcon className="w-4 h-4" /> Upload ID Proof or Degree Certificate Picture
                                 </h3>
 
-                                {previewUrl ? (
+                                {selectedFile ? (
                                     <div className="relative p-3 rounded-xl border border-surface-700 bg-surface-800/50 flex items-center justify-between gap-4">
                                         <div className="flex items-center gap-3">
-                                            <img src={previewUrl} alt="Upload preview" className="w-16 h-16 object-cover rounded-lg border border-surface-600" />
+                                            {selectedFile.type?.includes('pdf') || selectedFile.name?.endsWith('.pdf') ? (
+                                                <div className="w-16 h-16 rounded-lg bg-rose-500/10 border border-rose-500/30 flex flex-col items-center justify-center text-rose-400">
+                                                    <FileText className="w-8 h-8" />
+                                                    <span className="text-[9px] font-bold uppercase mt-1">PDF</span>
+                                                </div>
+                                            ) : (
+                                                <img src={previewUrl} alt="Upload preview" className="w-16 h-16 object-cover rounded-lg border border-surface-600" />
+                                            )}
                                             <div>
-                                                <p className="text-xs font-bold text-white">{selectedFile?.name}</p>
-                                                <p className="text-[10px] text-surface-400">{(selectedFile?.size / 1024).toFixed(1)} KB · Ready to verify</p>
+                                                <p className="text-xs font-bold text-white max-w-[250px] truncate">{selectedFile.name}</p>
+                                                <p className="text-[10px] text-emerald-400 font-semibold mt-0.5">
+                                                    {(selectedFile.size / 1024).toFixed(1)} KB · Ready to Extract & Verify
+                                                </p>
                                             </div>
                                         </div>
                                         <button
@@ -314,8 +323,8 @@ export default function VerificationModal({ isOpen, onClose, initialData = {}, o
                         <div className="space-y-6 animate-fade-in">
                             {/* Result Banner */}
                             <div className={`p-6 rounded-2xl border ${(result.isVerified || result.classification === 'VERIFIED' || result.classification === 'LOW_RISK')
-                                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-                                    : 'bg-red-500/10 border-red-500/30 text-red-300'
+                                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                                : 'bg-red-500/10 border-red-500/30 text-red-300'
                                 } flex flex-col sm:flex-row items-center justify-between gap-4`}>
                                 <div className="flex items-center gap-4">
                                     <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-surface-900/50 backdrop-blur-sm">
@@ -347,6 +356,53 @@ export default function VerificationModal({ isOpen, onClose, initialData = {}, o
                                     </div>
                                 </div>
                             </div>
+
+                            {/* Extracted Resume / Certificate Credentials Card */}
+                            {result.extractedCollegeDetails && (
+                                <div className="card space-y-4 border border-accent-500/30 bg-accent-500/5">
+                                    <div className="flex items-center justify-between border-b border-accent-500/20 pb-3">
+                                        <h4 className="text-xs font-bold text-accent-300 uppercase tracking-wider flex items-center gap-2">
+                                            <GraduationCap className="w-4 h-4 text-accent-400" />
+                                            Extracted Resume & Certificate Credentials (AI OCR)
+                                        </h4>
+                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent-500/20 text-accent-300 font-semibold border border-accent-500/30">
+                                            Auto-Extracted
+                                        </span>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                                        <div className="p-3 rounded-xl bg-surface-800/80 border border-surface-700/80">
+                                            <span className="text-surface-400 block text-[10px] font-medium">University / College</span>
+                                            <span className="font-bold text-white text-sm">
+                                                {result.extractedCollegeDetails.university || 'Not Detected'}
+                                            </span>
+                                        </div>
+                                        <div className="p-3 rounded-xl bg-surface-800/80 border border-surface-700/80">
+                                            <span className="text-surface-400 block text-[10px] font-medium">Degree & Department</span>
+                                            <span className="font-bold text-white">
+                                                {result.extractedCollegeDetails.degree || 'Degree N/A'} — {result.extractedCollegeDetails.department || 'Dept N/A'}
+                                            </span>
+                                        </div>
+                                        <div className="p-3 rounded-xl bg-surface-800/80 border border-surface-700/80">
+                                            <span className="text-surface-400 block text-[10px] font-medium">Graduation Year</span>
+                                            <span className="font-bold text-white">
+                                                {result.extractedCollegeDetails.graduation_year || 'N/A'}
+                                            </span>
+                                        </div>
+                                        <div className="p-3 rounded-xl bg-surface-800/80 border border-surface-700/80">
+                                            <span className="text-surface-400 block text-[10px] font-medium">CGPA / Grade</span>
+                                            <span className="font-bold text-emerald-400">
+                                                {result.extractedCollegeDetails.cgpa || 'N/A'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    {result.extractedCollegeDetails.register_number && result.extractedCollegeDetails.register_number !== 'Not detected' && (
+                                        <div className="p-2.5 rounded-lg bg-surface-800/50 border border-surface-700/50 text-xs flex justify-between">
+                                            <span className="text-surface-400">Extracted Register Number:</span>
+                                            <span className="font-mono font-bold text-accent-300">{result.extractedCollegeDetails.register_number}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
                             {/* Feature Breakdown */}
                             <div className="card space-y-3">
@@ -382,7 +438,20 @@ export default function VerificationModal({ isOpen, onClose, initialData = {}, o
                                 </div>
                             </div>
 
-                            <div className="flex justify-end">
+                            <div className="flex justify-between items-center gap-3 pt-2">
+                                <button
+                                    onClick={() => {
+                                        setResult(null);
+                                        setSelectedFile(null);
+                                        setPreviewUrl(null);
+                                        setStep('FORM');
+                                    }}
+                                    className="btn-secondary text-sm flex items-center gap-2"
+                                >
+                                    <Upload className="w-4 h-4 text-accent-400" />
+                                    Re-Verify / Upload New Document
+                                </button>
+
                                 <button
                                     onClick={() => {
                                         if (onVerificationSuccess) {

@@ -44,30 +44,30 @@ def _generate_training_data(n_samples=2000, seed=42):
     features = []
     labels = []
 
-    # Legitimate profiles: high field matches, good LinkedIn, high completeness
+    # Legitimate profiles: high field matches, good LinkedIn, realistic completeness
     for _ in range(n_legit):
         features.append([
-            rng.uniform(0.85, 1.0),   # name_similarity
+            rng.uniform(0.80, 1.0),   # name_similarity
             rng.choice([1.0], p=[1.0]),  # department_match (almost always matches)
             rng.choice([1.0, 0.0], p=[0.95, 0.05]),  # degree_match
             rng.choice([1.0, 0.0], p=[0.97, 0.03]),  # grad_year_match
-            rng.choice([1.0, 0.0], p=[0.90, 0.10]),  # register_number_match
-            rng.choice([1.0, 0.0], p=[0.80, 0.20]),  # linkedin_valid
-            rng.uniform(0.6, 1.0),   # profile_completeness
-            rng.choice([1.0, 0.5], p=[0.30, 0.70]),  # email_domain_trust
+            rng.choice([1.0, 0.0], p=[0.85, 0.15]),  # register_number_match
+            rng.choice([1.0, 0.5, 0.0], p=[0.60, 0.15, 0.25]),  # linkedin_valid
+            rng.uniform(0.1, 1.0),   # profile_completeness (many legit users don't fill all fields)
+            rng.choice([1.0, 0.5], p=[0.15, 0.85]),  # email_domain_trust (most use personal email)
         ])
         labels.append(0)
 
     # Fraudulent profiles: lower matches, invalid LinkedIn, low completeness
     for _ in range(n_fraud):
         features.append([
-            rng.uniform(0.1, 0.7),   # name_similarity
-            rng.choice([1.0, 0.0], p=[0.3, 0.7]),  # department_match
-            rng.choice([1.0, 0.0], p=[0.25, 0.75]), # degree_match
-            rng.choice([1.0, 0.0], p=[0.20, 0.80]), # grad_year_match
-            rng.choice([1.0, 0.0], p=[0.15, 0.85]), # register_number_match
-            rng.choice([1.0, 0.0], p=[0.20, 0.80]), # linkedin_valid
-            rng.uniform(0.1, 0.5),   # profile_completeness
+            rng.uniform(0.0, 0.65),   # name_similarity (poor name match)
+            rng.choice([1.0, 0.0], p=[0.25, 0.75]),  # department_match
+            rng.choice([1.0, 0.0], p=[0.20, 0.80]), # degree_match
+            rng.choice([1.0, 0.0], p=[0.15, 0.85]), # grad_year_match
+            rng.choice([1.0, 0.0], p=[0.10, 0.90]), # register_number_match
+            rng.choice([1.0, 0.0], p=[0.15, 0.85]), # linkedin_valid
+            rng.uniform(0.0, 0.4),   # profile_completeness
             rng.choice([1.0, 0.5], p=[0.05, 0.95]),  # email_domain_trust
         ])
         labels.append(1)
