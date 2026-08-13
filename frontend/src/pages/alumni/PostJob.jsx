@@ -1,16 +1,30 @@
 import { useState } from 'react';
-import { Briefcase, MapPin, Plus, Send, X } from 'lucide-react';
+import { Loader2, Plus, Send } from 'lucide-react';
+import api from '../../services/api';
 
 export default function PostJob() {
-    const [form, setForm] = useState({ title: '', company: '', location: '', type: 'Internship', description: '', skills: '', requirements: '' });
-    const [posted, setPosted] = useState(false);
+    const emptyForm = { title: '', company: '', location: '', type: 'Internship', description: '', skills: '', requirements: '', applicationUrl: '' };
+    const [form, setForm] = useState(emptyForm);
+    const [message, setMessage] = useState('');
+    const [error, setError] = useState('');
+    const [saving, setSaving] = useState(false);
 
     const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        setPosted(true);
-        setTimeout(() => setPosted(false), 3000);
+    const handleSubmit = async (event, status = 'ACTIVE') => {
+        event?.preventDefault();
+        setMessage('');
+        setError('');
+        setSaving(true);
+        try {
+            await api.post('/api/jobs', { ...form, status });
+            setMessage(status === 'DRAFT' ? 'Opportunity saved as a draft.' : 'Opportunity posted and available for student matching.');
+            setForm(emptyForm);
+        } catch (requestError) {
+            setError(requestError.response?.data?.detail || 'Unable to save the opportunity');
+        } finally {
+            setSaving(false);
+        }
     };
 
     return (
@@ -22,11 +36,12 @@ export default function PostJob() {
                 <p className="text-sm text-surface-400 mt-1">Help students by sharing job openings or internships from your network</p>
             </div>
 
-            {posted && (
+            {message && (
                 <div className="p-4 rounded-xl bg-green-500/10 border border-green-500/20 text-green-400 text-sm flex items-center gap-2">
-                    <Send className="w-4 h-4" /> Opportunity posted successfully! AI will match it with relevant students.
+                    <Send className="w-4 h-4" /> {message}
                 </div>
             )}
+            {error && <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-400">{error}</div>}
 
             <form onSubmit={handleSubmit} className="card space-y-5">
                 <div className="grid md:grid-cols-2 gap-4">
@@ -71,10 +86,15 @@ export default function PostJob() {
                     <textarea name="requirements" value={form.requirements} onChange={handleChange} className="input-field min-h-[80px] resize-y" placeholder="Minimum qualifications, certifications, etc." />
                 </div>
 
+                <div>
+                    <label className="block text-sm font-medium text-surface-300 mb-2">Application Link (optional)</label>
+                    <input type="url" name="applicationUrl" value={form.applicationUrl} onChange={handleChange} className="input-field" placeholder="https://company.com/careers/job" />
+                </div>
+
                 <div className="flex justify-end gap-3 pt-4 border-t border-surface-800/50">
-                    <button type="button" className="btn-secondary">Save as Draft</button>
-                    <button type="submit" className="btn-accent flex items-center gap-2">
-                        <Send className="w-4 h-4" /> Post Opportunity
+                    <button type="button" onClick={(event) => handleSubmit(event, 'DRAFT')} disabled={saving} className="btn-secondary disabled:opacity-50">Save as Draft</button>
+                    <button type="submit" disabled={saving} className="btn-accent flex items-center gap-2 disabled:opacity-50">
+                        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} Post Opportunity
                     </button>
                 </div>
             </form>

@@ -1,7 +1,8 @@
 import { useAuth } from '../../context/AuthContext';
-import { Bell, Search, LogOut, UserCircle, Settings, ChevronDown, ShieldCheck, Sparkles } from 'lucide-react';
+import { Search, LogOut, UserCircle, Settings, ChevronDown, ShieldCheck } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import NotificationMenu from './NotificationMenu';
 
 const roleBadgeColors = {
     ADMIN: 'bg-red-500/20 text-red-400 border-red-500/30',
@@ -66,11 +67,7 @@ export default function Navbar() {
                     </button>
                 </div>
 
-                {/* Notifications */}
-                <button className="relative p-2 rounded-xl hover:bg-surface-800 text-surface-400 hover:text-white transition-all">
-                    <Bell className="w-5 h-5" />
-                    <span className="absolute top-1 right-1 w-2 h-2 bg-primary-500 rounded-full animate-pulse" />
-                </button>
+                <NotificationMenu />
 
                 {/* User Menu */}
                 <div className="relative" ref={menuRef}>

@@ -32,6 +32,7 @@ async function loadUser(req, res, next) {
         const user = await prisma.user.findUnique({
             where: { id: parseInt(req.userId) },
             include: {
+                studentProfile: true,
                 alumniProfile: {
                     select: {
                         id: true,

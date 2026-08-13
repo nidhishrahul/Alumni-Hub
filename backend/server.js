@@ -5,12 +5,14 @@ const http = require('http');
 const { Server } = require('socket.io');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
+const { finalizeDueReunions } = require('./services/reunionService');
 
 const authRoutes = require('./routes/auth');
 const reunionRoutes = require('./routes/reunions');
 const verificationRoutes = require('./routes/verification');
 const notificationRoutes = require('./routes/notifications');
 const alumniDirectoryRoutes = require('./routes/alumni-directory');
+const jobRoutes = require('./routes/jobs');
 // ADDED FOR VERIFICATION FEATURE
 const aiVerificationRoutes = require('./routes/ai-verification');
 
@@ -44,6 +46,7 @@ app.use('/api/reunions', reunionRoutes);
 app.use('/api/verification', verificationRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/alumni-directory', alumniDirectoryRoutes);
+app.use('/api/jobs', jobRoutes);
 // ADDED FOR VERIFICATION FEATURE
 app.use('/api/ai-verification', aiVerificationRoutes);
 
@@ -148,6 +151,17 @@ io.on('connection', (socket) => {
 });
 
 server.listen(PORT, () => {
+    finalizeDueReunions().catch((error) => {
+        console.error('Initial reunion deadline check failed:', error);
+    });
+
+    const reunionDeadlineTimer = setInterval(() => {
+        finalizeDueReunions().catch((error) => {
+            console.error('Scheduled reunion deadline check failed:', error);
+        });
+    }, 60 * 1000);
+    reunionDeadlineTimer.unref();
+
     console.log(`\n🚀 AlumniConnect Express + Socket.IO running on http://localhost:${PORT}`);
     console.log(`   Health: http://localhost:${PORT}/api/health\n`);
 });

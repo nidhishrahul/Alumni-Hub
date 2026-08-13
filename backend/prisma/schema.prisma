@@ -38,7 +38,8 @@ model User {
   updatedAt         DateTime @updatedAt
 
   // 1:1 optional profile
-  alumniProfile AlumniProfile?
+  alumniProfile  AlumniProfile?
+  studentProfile StudentProfile?
 
   // Relations where user acts in various capacities
   coordinatedBatches Batch[]              @relation("BatchCoordinator")
@@ -47,10 +48,13 @@ model User {
   venueVotes         ReunionVenueVote[]
   attendance         ReunionAttendance[]
   paidExpenses       ReunionExpense[]     @relation("ExpensePayer")
+  expenseShares      ReunionExpenseShare[]
   uploadedPhotos     ReunionPhoto[]
   announcements      Announcement[]       @relation("AnnouncementAuthor")
   announcementReads  AnnouncementRead[]
   notifications      Notification[]
+  postedJobs         JobOpportunity[]  @relation("JobPoster")
+  jobActions         StudentJobAction[]
 
   // Admin reviewing verification requests
   reviewedVerifications VerificationRequest[] @relation("VerificationReviewer")
@@ -64,6 +68,25 @@ model User {
 }
 
 // ── AlumniProfile ───────────────────────────────────────────────────────────
+// Student career data is separate from AlumniProfile so students never appear
+// in alumni-only features such as batch reunions.
+model StudentProfile {
+  id             Int     @id @default(autoincrement())
+  userId         Int     @unique
+  graduationYear Int?
+  department     String?
+  degree         String?
+  location       String?
+  bio            String?
+  skills         String?
+  interests      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([department])
+  @@index([graduationYear])
+}
+
 model AlumniProfile {
   id                       Int       @id @default(autoincrement())
   userId                   Int       @unique
@@ -188,6 +211,48 @@ model MentorshipMessage {
 }
 
 // ── Batch ────────────────────────────────────────────────────────────────────
+// Alumni-posted opportunities and each student's saved/application state.
+model JobOpportunity {
+  id             Int       @id @default(autoincrement())
+  title          String
+  company        String
+  location       String
+  type           String
+  description    String
+  skills         String
+  requirements   String?
+  applicationUrl String?
+  status         String    @default("ACTIVE") // ACTIVE | DRAFT | CLOSED
+  postedByUserId Int?
+  createdAt      DateTime  @default(now())
+  expiresAt      DateTime?
+
+  postedBy User?              @relation("JobPoster", fields: [postedByUserId], references: [id], onDelete: SetNull)
+  actions  StudentJobAction[]
+
+  @@index([status])
+  @@index([postedByUserId])
+  @@index([createdAt])
+}
+
+model StudentJobAction {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  jobId     Int
+  isSaved   Boolean   @default(false)
+  appliedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  user User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job  JobOpportunity @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, jobId])
+  @@index([userId])
+  @@index([jobId])
+  @@index([appliedAt])
+}
+
 model Batch {
   id                 Int    @id @default(autoincrement())
   department         String
@@ -206,6 +271,9 @@ model Batch {
 model Reunion {
   id                  Int       @id @default(autoincrement())
   batchId             Int
+  createdByUserId     Int?
+  audienceType        String    @default("DEPARTMENT") // DEPARTMENT | WHOLE_BATCH
+  targetDepartment    String?
   title               String
   description         String    @default("")
   proposedDates       String    // JSON array of date-option strings
@@ -214,6 +282,8 @@ model Reunion {
   finalVenue          String?
   status              String    @default("PLANNING") // ReunionStatus
   countdownTargetDate DateTime?
+  votingDeadline      DateTime?
+  finalizedAt         DateTime?
 
   batch         Batch               @relation(fields: [batchId], references: [id], onDelete: Cascade)
   dateVotes     ReunionDateVote[]
@@ -224,7 +294,11 @@ model Reunion {
   announcements Announcement[]      @relation("ReunionAnnouncement")
 
   @@index([batchId])
+  @@index([createdByUserId])
+  @@index([audienceType])
+  @@index([targetDepartment])
   @@index([status])
+  @@index([votingDeadline])
 }
 
 // ── ReunionDateVote ─────────────────────────────────────────────────────────
@@ -265,6 +339,8 @@ model ReunionAttendance {
   status              String  @default("GOING") // AttendanceStatus
   accommodationNeeded Boolean @default(false)
   dietaryNotes        String?
+  maybeDeadline       DateTime?
+  respondedAt         DateTime?
 
   reunion Reunion @relation(fields: [reunionId], references: [id], onDelete: Cascade)
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -286,9 +362,28 @@ model ReunionExpense {
 
   reunion Reunion @relation(fields: [reunionId], references: [id], onDelete: Cascade)
   paidBy  User    @relation("ExpensePayer", fields: [paidByUserId], references: [id], onDelete: Cascade)
+  shares  ReunionExpenseShare[]
 
   @@index([reunionId])
   @@index([paidByUserId])
+}
+
+model ReunionExpenseShare {
+  id         Int       @id @default(autoincrement())
+  expenseId  Int
+  userId     Int
+  amount     Float
+  status     String    @default("PENDING") // PENDING | PAID
+  paidAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  expense ReunionExpense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([expenseId, userId])
+  @@index([expenseId])
+  @@index([userId])
+  @@index([status])
 }
 
 // ── ReunionPhoto ────────────────────────────────────────────────────────────

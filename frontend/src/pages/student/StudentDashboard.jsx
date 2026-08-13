@@ -1,234 +1,164 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
 import {
-    GraduationCap, Briefcase, Users, Calendar, TrendingUp,
-    ArrowRight, Sparkles, Brain, Target, BookOpen
+    ArrowRight, Briefcase, CheckCircle2, GraduationCap, Loader2,
+    MessageSquare, Sparkles, Target, UserRound, Users,
 } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
+import { useAuth } from '../../context/AuthContext';
+import api from '../../services/api';
 
-const skillData = [
-    { name: 'Python', level: 85 }, { name: 'ML/AI', level: 72 },
-    { name: 'React', level: 68 }, { name: 'Cloud', level: 55 },
-    { name: 'Data Science', level: 78 }, { name: 'Java', level: 60 },
-];
-
-const activityData = [
-    { month: 'Jan', mentorships: 2, applications: 5 },
-    { month: 'Feb', mentorships: 3, applications: 8 },
-    { month: 'Mar', mentorships: 1, applications: 12 },
-    { month: 'Apr', mentorships: 4, applications: 7 },
-    { month: 'May', mentorships: 2, applications: 15 },
-    { month: 'Jun', mentorships: 5, applications: 10 },
-];
-
-const recommendedMentors = [
-    { name: 'Dr. Priya Sharma', role: 'AI Research Lead', company: 'Google DeepMind', match: 94, skills: ['Machine Learning', 'NLP', 'Python'] },
-    { name: 'Rahul Verma', role: 'Senior SDE', company: 'Microsoft', match: 88, skills: ['Cloud Computing', 'React', 'TypeScript'] },
-    { name: 'Anita Patel', role: 'Data Scientist', company: 'Amazon', match: 82, skills: ['Data Science', 'Python', 'TensorFlow'] },
-];
-
-const recommendedJobs = [
-    { title: 'ML Engineer Intern', company: 'Google', type: 'Internship', match: 91, reason: 'Strong Python + ML skills match' },
-    { title: 'Full Stack Developer', company: 'Microsoft', type: 'Job', match: 85, reason: 'React + Cloud experience aligns' },
-    { title: 'Data Analyst', company: 'Amazon', type: 'Internship', match: 79, reason: 'Data Science skills match' },
-];
+const parseList = (value) => {
+    if (!value) return [];
+    if (Array.isArray(value)) return value;
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return String(value).split(',').map((item) => item.trim()).filter(Boolean);
+    }
+};
 
 export default function StudentDashboard() {
     const { user } = useAuth();
+    const [jobs, setJobs] = useState([]);
+    const [mentors, setMentors] = useState([]);
+    const [requests, setRequests] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const profile = user?.studentProfile || {};
+    const skills = useMemo(() => parseList(profile.skills), [profile.skills]);
 
-    const stats = [
-        { label: 'Mentor Matches', value: '12', icon: Users, color: 'text-primary-400', bg: 'bg-primary-500/10' },
-        { label: 'Job Recommendations', value: '28', icon: Briefcase, color: 'text-accent-400', bg: 'bg-accent-500/10' },
-        { label: 'Upcoming Events', value: '5', icon: Calendar, color: 'text-amber-400', bg: 'bg-amber-500/10' },
-        { label: 'Skill Score', value: '78/100', icon: Target, color: 'text-green-400', bg: 'bg-green-500/10' },
-    ];
+    useEffect(() => {
+        const loadDashboard = async () => {
+            try {
+                const [jobResponse, mentorResponse, requestResponse] = await Promise.all([
+                    api.get('/api/jobs/recommendations'),
+                    api.get('/api/alumni-directory'),
+                    api.get('/api/alumni-directory/my-requests'),
+                ]);
+                setJobs(jobResponse.data.jobs || []);
+                setMentors(mentorResponse.data || []);
+                setRequests(requestResponse.data || []);
+            } catch (requestError) {
+                setError(requestError.response?.data?.detail || 'Unable to load your student dashboard');
+            } finally {
+                setLoading(false);
+            }
+        };
+        loadDashboard();
+    }, []);
+
+    const readinessFields = [profile.department, profile.degree, profile.graduationYear, profile.bio, skills.length];
+    const readiness = Math.round(readinessFields.filter(Boolean).length / readinessFields.length * 100);
+    const activeRequests = requests.filter((request) => !['DECLINED', 'COMPLETED'].includes(request.status)).length;
+    const strongMatches = jobs.filter((job) => job.matchScore >= 70).length;
+    const firstName = (user?.name || 'Student').split(' ')[0];
+
+    if (loading) {
+        return <div className="flex min-h-[420px] items-center justify-center"><Loader2 className="h-9 w-9 animate-spin text-primary-400" /></div>;
+    }
 
     return (
         <div className="space-y-6 animate-fade-in">
-            {/* Welcome Banner */}
-            <div className="relative overflow-hidden rounded-2xl gradient-primary p-6 md:p-8">
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent to-white/5" />
-                <div className="relative z-10 flex items-center justify-between">
+            <section className="relative overflow-hidden rounded-3xl gradient-primary p-6 md:p-8">
+                <div className="absolute -right-16 -top-20 h-64 w-64 rounded-full bg-white/10 blur-3xl" />
+                <div className="relative z-10 flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
                     <div>
-                        <h1 className="text-2xl md:text-3xl font-black text-white mb-2">
-                            Welcome back, {user?.full_name?.split(' ')[0] || 'Student'} 👋
-                        </h1>
-                        <p className="text-white/70 max-w-lg">
-                            Your AI agents have found <span className="text-white font-semibold">3 new mentor matches</span> and{' '}
-                            <span className="text-white font-semibold">5 job opportunities</span> since your last visit.
+                        <p className="mb-2 flex items-center gap-2 text-sm font-semibold text-white/75"><Sparkles className="h-4 w-4" />Your career workspace</p>
+                        <h1 className="text-3xl font-black text-white">Welcome back, {firstName}</h1>
+                        <p className="mt-2 max-w-xl text-sm leading-relaxed text-white/75">
+                            You have {strongMatches} strong job match{strongMatches === 1 ? '' : 'es'} and {activeRequests} active mentorship request{activeRequests === 1 ? '' : 's'}.
                         </p>
                     </div>
-                    <div className="hidden md:flex gap-3">
-                        <Link to="/student/mentors" className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-white text-sm font-medium transition-all flex items-center gap-2">
-                            <Brain className="w-4 h-4" /> Find Mentors
-                        </Link>
-                        <Link to="/student/jobs" className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-white text-sm font-medium transition-all flex items-center gap-2">
-                            <Briefcase className="w-4 h-4" /> Browse Jobs
-                        </Link>
+                    <div className="flex flex-wrap gap-3">
+                        <Link to="/student/jobs" className="flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-primary-700 transition hover:bg-white/90"><Briefcase className="h-4 w-4" />Explore jobs</Link>
+                        <Link to="/student/mentors" className="flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/20"><Users className="h-4 w-4" />Find mentors</Link>
                     </div>
                 </div>
-            </div>
+            </section>
 
-            {/* Stats Grid */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                {stats.map((stat, i) => (
-                    <div key={i} className="stat-card">
-                        <div className="flex items-center justify-between">
-                            <div className={`w-10 h-10 rounded-xl ${stat.bg} flex items-center justify-center`}>
-                                <stat.icon className={`w-5 h-5 ${stat.color}`} />
-                            </div>
-                            <TrendingUp className="w-4 h-4 text-green-400" />
-                        </div>
-                        <div className="mt-3">
-                            <p className="text-2xl font-black text-white">{stat.value}</p>
-                            <p className="text-xs text-surface-400 mt-1">{stat.label}</p>
-                        </div>
+            {error && <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300">{error}</div>}
+
+            <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                {[
+                    { label: 'Recommended jobs', value: jobs.length, icon: Briefcase, color: 'text-accent-400', bg: 'bg-accent-500/10' },
+                    { label: 'Strong skill matches', value: strongMatches, icon: Target, color: 'text-green-400', bg: 'bg-green-500/10' },
+                    { label: 'Available alumni', value: mentors.length, icon: GraduationCap, color: 'text-primary-400', bg: 'bg-primary-500/10' },
+                    { label: 'Mentorship requests', value: activeRequests, icon: MessageSquare, color: 'text-amber-400', bg: 'bg-amber-500/10' },
+                ].map(({ label, value, icon: Icon, color, bg }) => (
+                    <div key={label} className="stat-card group">
+                        <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${bg}`}><Icon className={`h-5 w-5 ${color}`} /></div>
+                        <p className="mt-4 text-2xl font-black text-white">{value}</p>
+                        <p className="mt-1 text-xs text-surface-400">{label}</p>
                     </div>
                 ))}
-            </div>
+            </section>
 
-            {/* Charts + Recommendations */}
-            <div className="grid lg:grid-cols-2 gap-6">
-                {/* Activity Chart */}
-                <div className="card">
-                    <div className="flex items-center justify-between mb-6">
-                        <h3 className="text-lg font-bold text-white">Activity Overview</h3>
-                        <span className="badge badge-primary">Last 6 months</span>
+            <section className="grid gap-6 lg:grid-cols-3">
+                <div className="card lg:col-span-2">
+                    <div className="mb-5 flex items-center justify-between">
+                        <div>
+                            <h2 className="font-bold text-white">Top matches for your skills</h2>
+                            <p className="mt-1 text-xs text-surface-400">Live opportunities ranked from your profile</p>
+                        </div>
+                        <Link to="/student/jobs" className="flex items-center gap-1 text-sm text-primary-400 hover:text-primary-300">View all <ArrowRight className="h-4 w-4" /></Link>
                     </div>
-                    <ResponsiveContainer width="100%" height={240}>
-                        <AreaChart data={activityData}>
-                            <defs>
-                                <linearGradient id="colorMentor" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                                </linearGradient>
-                                <linearGradient id="colorApps" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#14b8a6" stopOpacity={0.3} />
-                                    <stop offset="95%" stopColor="#14b8a6" stopOpacity={0} />
-                                </linearGradient>
-                            </defs>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                            <XAxis dataKey="month" tick={{ fill: '#64748b', fontSize: 12 }} />
-                            <YAxis tick={{ fill: '#64748b', fontSize: 12 }} />
-                            <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12 }} />
-                            <Area type="monotone" dataKey="mentorships" stroke="#3b82f6" fillOpacity={1} fill="url(#colorMentor)" name="Mentorships" />
-                            <Area type="monotone" dataKey="applications" stroke="#14b8a6" fillOpacity={1} fill="url(#colorApps)" name="Applications" />
-                        </AreaChart>
-                    </ResponsiveContainer>
-                </div>
-
-                {/* Skill Assessment */}
-                <div className="card">
-                    <div className="flex items-center justify-between mb-6">
-                        <h3 className="text-lg font-bold text-white">Skill Assessment</h3>
-                        <span className="badge badge-accent">AI Analyzed</span>
-                    </div>
-                    <div className="space-y-4">
-                        {skillData.map((skill, i) => (
-                            <div key={i}>
-                                <div className="flex items-center justify-between mb-1.5">
-                                    <span className="text-sm text-surface-300">{skill.name}</span>
-                                    <span className="text-xs font-semibold text-primary-400">{skill.level}%</span>
+                    <div className="space-y-3">
+                        {jobs.slice(0, 4).map((job) => (
+                            <Link key={job.id} to="/student/jobs" className="group flex flex-col gap-3 rounded-xl border border-surface-700/40 bg-surface-800/25 p-4 transition hover:border-accent-500/30 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-500/10"><Briefcase className="h-5 w-5 text-accent-400" /></div>
+                                    <div>
+                                        <p className="text-sm font-semibold text-white group-hover:text-accent-300">{job.title}</p>
+                                        <p className="text-xs text-surface-400">{job.company} · {job.type}</p>
+                                        <p className="mt-1 line-clamp-1 text-xs text-accent-400">{job.reason}</p>
+                                    </div>
                                 </div>
-                                <div className="w-full h-2 bg-surface-800 rounded-full overflow-hidden">
-                                    <div
-                                        className="h-full rounded-full gradient-primary transition-all duration-1000"
-                                        style={{ width: `${skill.level}%` }}
-                                    />
-                                </div>
-                            </div>
+                                <span className="badge badge-accent shrink-0">{job.matchScore}% match</span>
+                            </Link>
                         ))}
+                        {!jobs.length && <p className="py-8 text-center text-sm text-surface-400">No active opportunities are available yet.</p>}
                     </div>
                 </div>
-            </div>
 
-            {/* AI Mentor Recommendations */}
-            <div className="card">
-                <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-primary-500/10 flex items-center justify-center">
-                            <Sparkles className="w-5 h-5 text-primary-400" />
-                        </div>
-                        <div>
-                            <h3 className="text-lg font-bold text-white">AI Mentor Recommendations</h3>
-                            <p className="text-xs text-surface-400">Matched using NLP + Cosine Similarity</p>
-                        </div>
+                <div className="card">
+                    <div className="flex items-center justify-between">
+                        <h2 className="font-bold text-white">Profile readiness</h2>
+                        <span className="text-lg font-black text-green-400">{readiness}%</span>
                     </div>
-                    <Link to="/student/mentors" className="text-sm text-primary-400 hover:text-primary-300 flex items-center gap-1">
-                        View All <ArrowRight className="w-3.5 h-3.5" />
-                    </Link>
-                </div>
-
-                <div className="grid md:grid-cols-3 gap-4">
-                    {recommendedMentors.map((mentor, i) => (
-                        <div key={i} className="p-4 rounded-xl bg-surface-800/30 border border-surface-700/30 hover:border-primary-500/30 transition-all">
-                            <div className="flex items-start gap-3 mb-3">
-                                <div className="w-10 h-10 rounded-full gradient-primary flex items-center justify-center text-white text-sm font-bold shrink-0">
-                                    {mentor.name[0]}
-                                </div>
-                                <div>
-                                    <p className="font-semibold text-white text-sm">{mentor.name}</p>
-                                    <p className="text-xs text-surface-400">{mentor.role}</p>
-                                    <p className="text-xs text-primary-400">{mentor.company}</p>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-2 mb-3">
-                                <div className="flex-1 h-1.5 bg-surface-700 rounded-full overflow-hidden">
-                                    <div className="h-full gradient-primary rounded-full" style={{ width: `${mentor.match}%` }} />
-                                </div>
-                                <span className="text-xs font-bold text-primary-400">{mentor.match}%</span>
-                            </div>
-                            <div className="flex flex-wrap gap-1.5">
-                                {mentor.skills.map((s, j) => (
-                                    <span key={j} className="badge badge-primary text-[10px]">{s}</span>
-                                ))}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-
-            {/* AI Job Recommendations */}
-            <div className="card">
-                <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-accent-500/10 flex items-center justify-center">
-                            <Briefcase className="w-5 h-5 text-accent-400" />
-                        </div>
-                        <div>
-                            <h3 className="text-lg font-bold text-white">AI Job Recommendations</h3>
-                            <p className="text-xs text-surface-400">Skills matched with Explainable AI</p>
-                        </div>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-800"><div className="h-full rounded-full bg-gradient-to-r from-primary-500 to-green-400 transition-all" style={{ width: `${readiness}%` }} /></div>
+                    <div className="mt-5 space-y-3">
+                        {skills.length ? skills.slice(0, 6).map((skill) => (
+                            <div key={skill} className="flex items-center gap-2 text-sm text-surface-300"><CheckCircle2 className="h-4 w-4 text-green-400" />{skill}</div>
+                        )) : <p className="text-sm leading-relaxed text-surface-400">Add skills so jobs can be ranked for your actual strengths.</p>}
                     </div>
-                    <Link to="/student/jobs" className="text-sm text-primary-400 hover:text-primary-300 flex items-center gap-1">
-                        View All <ArrowRight className="w-3.5 h-3.5" />
-                    </Link>
+                    <Link to="/profile" className="btn-secondary mt-6 flex w-full items-center justify-center gap-2 text-sm"><UserRound className="h-4 w-4" />Complete profile</Link>
                 </div>
+            </section>
 
-                <div className="space-y-3">
-                    {recommendedJobs.map((job, i) => (
-                        <div key={i} className="flex items-center justify-between p-4 rounded-xl bg-surface-800/30 border border-surface-700/30 hover:border-accent-500/30 transition-all group">
-                            <div className="flex items-center gap-4">
-                                <div className="w-10 h-10 rounded-xl bg-accent-500/10 flex items-center justify-center">
-                                    <BookOpen className="w-5 h-5 text-accent-400" />
-                                </div>
-                                <div>
-                                    <p className="font-semibold text-white text-sm">{job.title}</p>
-                                    <p className="text-xs text-surface-400">{job.company} · {job.type}</p>
-                                    <p className="text-xs text-accent-400 mt-0.5 flex items-center gap-1">
-                                        <Sparkles className="w-3 h-3" /> {job.reason}
-                                    </p>
-                                </div>
-                            </div>
+            <section className="card">
+                <div className="mb-5 flex items-center justify-between">
+                    <div>
+                        <h2 className="font-bold text-white">Alumni ready to help</h2>
+                        <p className="mt-1 text-xs text-surface-400">Start a real mentorship request and continue in live chat</p>
+                    </div>
+                    <Link to="/student/mentors" className="flex items-center gap-1 text-sm text-primary-400 hover:text-primary-300">Browse directory <ArrowRight className="h-4 w-4" /></Link>
+                </div>
+                <div className="grid gap-4 md:grid-cols-3">
+                    {mentors.slice(0, 3).map((mentor) => (
+                        <Link key={mentor.profileId} to="/student/mentors" className="rounded-xl border border-surface-700/40 bg-surface-800/25 p-4 transition hover:border-primary-500/40">
                             <div className="flex items-center gap-3">
-                                <span className="badge badge-accent">{job.match}% match</span>
-                                <ArrowRight className="w-4 h-4 text-surface-500 group-hover:text-white transition-colors" />
+                                <div className="flex h-10 w-10 items-center justify-center rounded-full gradient-primary text-sm font-bold text-white">{mentor.name?.[0] || '?'}</div>
+                                <div>
+                                    <p className="text-sm font-semibold text-white">{mentor.name}</p>
+                                    <p className="text-xs text-surface-400">{mentor.designation || 'Alumni mentor'}</p>
+                                    <p className="text-xs text-primary-400">{mentor.company || mentor.department}</p>
+                                </div>
                             </div>
-                        </div>
+                        </Link>
                     ))}
                 </div>
-            </div>
+            </section>
         </div>
     );
 }

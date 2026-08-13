@@ -1,89 +1,78 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import {
     PartyPopper, Plus, Calendar, MapPin, Users,
-    Clock, CheckCircle, Vote, Eye, AlertCircle
+    Clock, CheckCircle, Vote, Eye, AlertCircle, Crown, Mail, Trash2, Loader2,
+    Building2, GraduationCap
 } from 'lucide-react';
 
 import api from '../../services/api';
 
-const SAMPLE_REUNIONS = [
-    {
-        id: 1,
-        title: 'Silver Jubilee Grand Reunion — Class of 2020',
-        description: 'Celebrating 5 years of post-graduation success! Join us for a weekend of nostalgic campus tours, networking dinners, and guest lectures.',
-        status: 'PLANNING',
-        finalDate: null,
-        finalVenue: null,
-        batch: { department: 'Computer Science', graduationYear: 2020, coordinatorUserId: 1 },
-        _count: { dateVotes: 24, venueVotes: 18, attendance: 35, photos: 12, expenses: 4 }
-    },
-    {
-        id: 2,
-        title: 'Annual Alumni & Mentors Gala 2026',
-        description: 'An exclusive annual gathering connecting alumni, faculty, and graduating students at the Grand City Convention Center.',
-        status: 'CONFIRMED',
-        finalDate: '2026-08-15T18:00:00.000Z',
-        finalVenue: JSON.stringify({ name: 'Grand Horizon Ballroom, Bengaluru Tech Park' }),
-        batch: { department: 'Information Technology', graduationYear: 2021, coordinatorUserId: 2 },
-        _count: { dateVotes: 42, venueVotes: 38, attendance: 58, photos: 28, expenses: 9 }
-    },
-    {
-        id: 3,
-        title: 'Decade Nostalgia Gathering — Class of 2016',
-        description: '10 years since graduation! Reconnect with your batchmates, share career updates, and participate in our alumni mentorship panel.',
-        status: 'VENUE_VOTING',
-        finalDate: '2026-09-20T10:00:00.000Z',
-        finalVenue: null,
-        batch: { department: 'Electronics & Communication', graduationYear: 2016, coordinatorUserId: 3 },
-        _count: { dateVotes: 31, venueVotes: 29, attendance: 44, photos: 19, expenses: 6 }
-    }
-];
-
 export default function ReunionList() {
     const { user } = useAuth();
-    const navigate = useNavigate();
     const [reunions, setReunions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [deletingId, setDeletingId] = useState(null);
 
-    // Check if user is a batch coordinator
-    const isCoordinator = user?.role === 'ALUMNI' && user?.alumniProfile?.isVerified;
+    const canCreate = user?.role === 'ALUMNI' && user?.alumniProfile?.isVerified;
 
     useEffect(() => {
         fetchReunions();
+        const refreshTimer = setInterval(fetchReunions, 10000);
+        const refreshOnFocus = () => fetchReunions();
+        window.addEventListener('focus', refreshOnFocus);
+
+        return () => {
+            clearInterval(refreshTimer);
+            window.removeEventListener('focus', refreshOnFocus);
+        };
     }, []);
 
     const fetchReunions = async () => {
         try {
             const res = await api.get('/api/reunions');
-            if (Array.isArray(res.data) && res.data.length > 0) {
-                setReunions(res.data);
-            } else {
-                setReunions(SAMPLE_REUNIONS);
-            }
+            setReunions(Array.isArray(res.data) ? res.data : []);
         } catch (err) {
-            console.warn('Backend reunions request failed, showing sample reunions:', err);
-            setReunions(SAMPLE_REUNIONS);
+            setError(err.response?.data?.detail || 'Unable to load your batch reunions');
+            setReunions([]);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleDelete = async (reunion) => {
+        const isOrganizer = Number(reunion.organizer?.id) === Number(user?.id);
+        if (!isOrganizer || deletingId) return;
+
+        const confirmed = window.confirm(
+            `Delete "${reunion.title}"? This permanently removes its votes, attendance, expenses, photos, and announcements.`
+        );
+        if (!confirmed) return;
+
+        setDeletingId(reunion.id);
+        setError('');
+        try {
+            await api.delete(`/api/reunions/${reunion.id}`);
+            setReunions((items) => items.filter((item) => item.id !== reunion.id));
+        } catch (requestError) {
+            setError(requestError.response?.data?.detail || 'Unable to delete the reunion');
+        } finally {
+            setDeletingId(null);
         }
     };
 
     const getStatusDisplay = (reunion) => {
         switch (reunion.status) {
             case 'PLANNING':
+            case 'DATE_VOTING':
+            case 'VENUE_VOTING':
+            case 'VOTING':
                 return {
-                    label: 'Date Voting Open',
+                    label: 'Date & Venue Voting Open',
                     color: 'text-blue-400 bg-blue-500/10 border-blue-500/20',
                     icon: Vote
-                };
-            case 'VENUE_VOTING':
-                return {
-                    label: 'Venue Voting Open',
-                    color: 'text-purple-400 bg-purple-500/10 border-purple-500/20',
-                    icon: MapPin
                 };
             case 'CONFIRMED':
                 return {
@@ -133,12 +122,12 @@ export default function ReunionList() {
                         <div>
                             <h1 className="text-3xl font-black text-white">Batch Reunions</h1>
                             <p className="text-surface-400">
-                                {user?.role === 'ALUMNI' ? 'Reconnect with your graduating class' : 'Stay connected with your future alumni network'}
+                                Reunions shared with verified alumni from your graduation year
                             </p>
                         </div>
                     </div>
 
-                    {isCoordinator && (
+                    {canCreate && (
                         <Link to="/reunions/new" className="btn-primary flex items-center gap-2">
                             <Plus className="w-4 h-4" />
                             Create Reunion
@@ -167,14 +156,14 @@ export default function ReunionList() {
                                 <Users className="w-8 h-8 text-primary-400" />
                             </div>
                             <div>
-                                <h3 className="text-lg font-bold text-white">Your Batch</h3>
+                                <h3 className="text-lg font-bold text-white">Your Reunion Batch</h3>
                                 <p className="text-surface-300">
                                     {user.role === 'ALUMNI' ? (
                                         <>
-                                            {user.alumniProfile?.department} • Class of {user.alumniProfile?.graduationYear}
-                                            {isCoordinator && (
+                                            Class of {user.alumniProfile?.graduationYear} · All verified departments
+                                            {canCreate && (
                                                 <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-medium bg-accent-500/20 text-accent-400">
-                                                    Coordinator
+                                                    Verified alumni
                                                 </span>
                                             )}
                                         </>
@@ -197,11 +186,11 @@ export default function ReunionList() {
                         </div>
                         <h3 className="text-xl font-bold text-white mb-2">No Reunions Yet</h3>
                         <p className="text-surface-400 mb-6 max-w-md mx-auto">
-                            {isCoordinator
+                            {canCreate
                                 ? "You haven't organized any reunions yet. Create the first one for your batch!"
                                 : "No reunions have been organized for your batch yet. Stay tuned!"}
                         </p>
-                        {isCoordinator && (
+                        {canCreate && (
                             <Link to="/reunions/new" className="btn-primary inline-flex items-center gap-2">
                                 <Plus className="w-4 h-4" />
                                 Create First Reunion
@@ -213,6 +202,7 @@ export default function ReunionList() {
                         {reunions.map((reunion) => {
                             const status = getStatusDisplay(reunion);
                             const StatusIcon = status.icon;
+                            const isOrganizer = Number(reunion.organizer?.id) === Number(user?.id);
 
                             return (
                                 <div key={reunion.id} className="card hover:border-primary-500/30 transition-all duration-300 group">
@@ -240,6 +230,26 @@ export default function ReunionList() {
                                                         {status.label}
                                                     </span>
                                                 </div>
+
+                                                <div className="flex items-center gap-2 text-surface-300">
+                                                    {reunion.audienceType === 'WHOLE_BATCH'
+                                                        ? <GraduationCap className="h-4 w-4 shrink-0 text-accent-400" />
+                                                        : <Building2 className="h-4 w-4 shrink-0 text-primary-400" />}
+                                                    <span className="text-sm font-medium">
+                                                        {reunion.audienceType === 'WHOLE_BATCH'
+                                                            ? 'Whole batch'
+                                                            : `${reunion.targetDepartment} only`}
+                                                    </span>
+                                                </div>
+
+                                                {!reunion.finalizedAt && reunion.votingDeadline && (
+                                                    <div className="flex items-center gap-2 text-surface-300">
+                                                        <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+                                                        <span className="text-sm font-medium">
+                                                            Voting closes {new Date(reunion.votingDeadline).toLocaleString('en-IN')}
+                                                        </span>
+                                                    </div>
+                                                )}
 
                                                 {/* Final Date */}
                                                 {reunion.finalDate && (
@@ -270,9 +280,39 @@ export default function ReunionList() {
                                                 <span>{reunion._count.photos} photos</span>
                                                 <span>{reunion._count.expenses} expenses</span>
                                             </div>
+
+                                            {reunion.organizer && (
+                                                <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-surface-700/40 pt-4 text-sm">
+                                                    <span className="flex items-center gap-1.5 font-medium text-surface-300">
+                                                        <Crown className="h-4 w-4 text-amber-400" />
+                                                        Organizer: {reunion.organizer.name}
+                                                    </span>
+                                                    <a
+                                                        href={`mailto:${reunion.organizer.email}`}
+                                                        className="flex items-center gap-1.5 text-primary-400 hover:text-primary-300"
+                                                    >
+                                                        <Mail className="h-4 w-4" />
+                                                        {reunion.organizer.email}
+                                                    </a>
+                                                </div>
+                                            )}
                                         </div>
 
                                         <div className="flex items-center gap-3 ml-4">
+                                            {isOrganizer && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDelete(reunion)}
+                                                    disabled={deletingId === reunion.id}
+                                                    className="flex h-10 w-10 items-center justify-center rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 transition-colors hover:border-red-400 hover:bg-red-500/20 hover:text-red-300 disabled:opacity-50"
+                                                    aria-label={`Delete ${reunion.title}`}
+                                                    title="Delete reunion"
+                                                >
+                                                    {deletingId === reunion.id
+                                                        ? <Loader2 className="h-4 w-4 animate-spin" />
+                                                        : <Trash2 className="h-4 w-4" />}
+                                                </button>
+                                            )}
                                             <Link
                                                 to={`/reunions/${reunion.id}`}
                                                 className="btn-secondary flex items-center gap-2 text-sm"
@@ -288,24 +328,6 @@ export default function ReunionList() {
                     </div>
                 )}
 
-                {/* Coordinator Info */}
-                {!isCoordinator && user?.role === 'ALUMNI' && (
-                    <div className="mt-12 text-center">
-                        <div className="card bg-amber-500/5 border-amber-500/20">
-                            <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 rounded-xl bg-amber-500/20 flex items-center justify-center shrink-0">
-                                    <Users className="w-6 h-6 text-amber-400" />
-                                </div>
-                                <div className="text-left">
-                                    <h3 className="text-lg font-bold text-white">Want to be a Batch Coordinator?</h3>
-                                    <p className="text-surface-400 text-sm">
-                                        Batch coordinators can organize reunions for their graduating class. Contact an admin to request coordinator privileges.
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
             </div>
         </div>
     );
