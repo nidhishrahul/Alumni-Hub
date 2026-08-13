@@ -60,6 +60,7 @@ class VerifyRequest(BaseModel):
     resumeText: Optional[str] = None
     profilePhotoUrl: Optional[str] = None
     imageFilePath: Optional[str] = None
+    backImageFilePath: Optional[str] = None
     dbRecords: Optional[DbRecord] = None
 
 
@@ -70,6 +71,7 @@ class VerifyResponse(BaseModel):
     fraudProbability: float
     extractedCollegeDetails: Optional[dict] = None
     ocrExtractedText: Optional[str] = None
+    groqStructured: Optional[dict] = None
 
 
 # ─── Endpoints ───────────────────────────────────────────────────────────────
@@ -88,47 +90,86 @@ import json
 import os
 from resume_extractor import extract_college_details
 from ocr_service import extract_id_card_text
+from groq_service import groq_structuring_pass
 
 @app.post("/verify", response_model=VerifyResponse)
 def verify_alumni(request: VerifyRequest):
     """
     Run ML verification pipeline on submitted alumni data.
-    Processes uploaded ID Proof / Degree Certificate picture via EasyOCR & Resume Extractor.
-    Returns a risk score (0-100), classification, feature breakdown, and extracted college details.
+    Processes uploaded Front and Back ID Proof / Certificate images / Resume via PaddleOCR & Resume Extractor.
+    Runs Groq LLM structuring pass to extract clean credential fields from raw OCR text.
+    Returns a risk score (0-100), classification, feature breakdown, extracted college details, and Groq structured credentials.
     """
     try:
         submitted = request.model_dump(exclude={"dbRecords"})
         db_record = request.dbRecords.model_dump() if request.dbRecords else None
 
-        result = model.predict_risk(submitted, db_record)
+        # 1. OCR Processing on Uploaded Front & Back Images / Resume PDF
+        raw_front_path = request.imageFilePath or request.profilePhotoUrl or ""
+        front_file_path = os.path.normpath(raw_front_path) if raw_front_path else ""
 
-        # 1. OCR Processing on Uploaded ID Proof / Degree Certificate Picture
-        raw_image_path = request.imageFilePath or request.profilePhotoUrl or ""
-        image_file_path = os.path.normpath(raw_image_path) if raw_image_path else ""
+        raw_back_path = request.backImageFilePath or ""
+        back_file_path = os.path.normpath(raw_back_path) if raw_back_path else ""
+
         ocr_text = ""
         ocr_result = None
 
-        if image_file_path and os.path.exists(image_file_path):
-            print(f"\n [IMAGE PARSING] Uploaded Certificate / ID Picture Detected: {image_file_path}")
-            ocr_result = extract_id_card_text(front_path=image_file_path)
-            ocr_text = ocr_result.get("front_text", "")
-            result["ocrExtractedText"] = ocr_text
+        if (front_file_path and os.path.exists(front_file_path)) or (back_file_path and os.path.exists(back_file_path)):
+            print(f"\n [IMAGE PARSING] Dual-Image OCR Extraction Triggered:")
+            if front_file_path:
+                print(f"   - Front File Path: {front_file_path}")
+            if back_file_path:
+                print(f"   - Back File Path : {back_file_path}")
 
-        # 2. Extract college details from OCR text OR submitted resume text
+            ocr_result = extract_id_card_text(front_path=front_file_path if os.path.exists(front_file_path) else None,
+                                               back_path=back_file_path if os.path.exists(back_file_path) else None)
+            
+            front_text = ocr_result.get("front_text", "")
+            back_text = ocr_result.get("back_text", "")
+            ocr_text = f"{front_text}\n{back_text}".strip()
+
+        # 2. Groq LLM Structuring Pass — convert raw OCR text → clean structured JSON
+        groq_structured = {}
+        if ocr_text and ocr_text.strip():
+            print("\n [GROQ AI] Triggering LLM structuring pass on combined OCR text...")
+            groq_structured = groq_structuring_pass(ocr_text)
+        else:
+            print("\n [GROQ AI] No OCR text available — skipping LLM structuring pass.")
+            groq_structured = None
+
+        # 3. Extract college details from combined OCR text / resume text
         combined_text_for_extraction = f"{ocr_text}\n{request.resumeText or ''}\n{request.bio or ''}".strip()
         college_details = extract_college_details(combined_text_for_extraction) if combined_text_for_extraction else None
+
+        # 4. Predict Risk using ML Model (passing Groq AI extracted credentials for high accuracy scoring)
+        result = model.predict_risk(submitted, db_record, groq_structured)
+        result["ocrExtractedText"] = ocr_text
         result["extractedCollegeDetails"] = college_details
+        result["groqStructured"] = groq_structured
+
+        def _safe(v):
+            if v is None:
+                return "N/A"
+            return str(v).encode('ascii', errors='ignore').decode('ascii').strip() or "N/A"
 
         print("\n" + "=" * 80)
         print(" [PYTHON ML SERVICE] ALUMNI VERIFICATION INFERENCE")
         print("=" * 80)
-        print(f"  - Submitted Name : {submitted.get('name')}")
-        print(f"  - Register No     : {submitted.get('registerNumber') or 'N/A'}")
-        print(f"  - Dept / Degree   : {submitted.get('department')} / {submitted.get('degree')}")
-        print(f"  - Uploaded Image  : {image_file_path if image_file_path else 'None'}")
-        print(f"  - OCR Text Found  : {'Yes (' + str(len(ocr_text)) + ' chars)' if ocr_text else 'None'}")
+        print(f"  - Submitted Name : {_safe(submitted.get('name'))}")
+        print(f"  - Register No     : {_safe(submitted.get('registerNumber'))}")
+        print(f"  - Dept / Degree   : {_safe(submitted.get('department'))} / {_safe(submitted.get('degree'))}")
+        print(f"  - Front Image     : {front_file_path if front_file_path else 'None'}")
+        print(f"  - Back Image      : {back_file_path if back_file_path else 'None'}")
+        print(f"  - OCR Text Found  : {'Yes (' + str(len(ocr_text)) + ' chars combined)' if ocr_text else 'None'}")
         print(f"  - Resume Text     : {'Yes (' + str(len(request.resumeText)) + ' chars)' if request.resumeText else 'None'}")
         print(f"  - DB Cross-Ref    : {'Matched' if db_record else 'None'}")
+        if groq_structured and groq_structured.get('name'):
+            print(f"  - Groq Name       : {_safe(groq_structured.get('name'))}")
+            print(f"  - Groq Roll No    : {_safe(groq_structured.get('roll_number'))}")
+            print(f"  - Groq Dept       : {_safe(groq_structured.get('department'))}")
+            print(f"  - Groq Email      : {_safe(groq_structured.get('email'))}")
+            print(f"  - Groq DOB        : {_safe(groq_structured.get('date_of_birth'))}")
+            print(f"  - Groq Grad       : {_safe(groq_structured.get('graduation_start_year'))} - {_safe(groq_structured.get('graduation_end_year'))}")
         print("-" * 80)
         print(f"  Risk Score: {result['riskScore']:.1f}/100  Class: {result['classification']}  Fraud Prob: {result['fraudProbability']}")
         print("  Features Breakdown:")

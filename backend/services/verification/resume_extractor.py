@@ -97,20 +97,24 @@ def extract_college_details(resume_text: str) -> Dict[str, Any]:
     # ═════════════════════════════════════════════════════════════════════════
     #  LOCAL TERMINAL PRINT — RESUME COLLEGE DETAILS EXTRACTION
     # ═════════════════════════════════════════════════════════════════════════
+    def _s(v):
+        return str(v).encode('ascii', errors='ignore').decode('ascii').strip() or 'N/A'
+
     print("\n" + "=" * 80)
     print(" [RESUME EXTRACTION] COLLEGE DETAILS EXTRACTED FROM RESUME")
     print("=" * 80)
-    print(f"  - University / College : {extracted_details['university']}")
-    print(f"  - Degree Extracted     : {extracted_details['degree']}")
-    print(f"  - Department / Major   : {extracted_details['department']}")
+    print(f"  - University / College : {_s(extracted_details['university'])}")
+    print(f"  - Degree Extracted     : {_s(extracted_details['degree'])}")
+    print(f"  - Department / Major   : {_s(extracted_details['department'])}")
     print(f"  - Graduation Year      : {extracted_details['graduation_year'] or 'N/A'}")
-    print(f"  - Register / Roll No   : {extracted_details['register_number']}")
-    print(f"  - CGPA / Grade         : {extracted_details['cgpa']}")
+    print(f"  - Register / Roll No   : {_s(extracted_details['register_number'])}")
+    print(f"  - CGPA / Grade         : {_s(extracted_details['cgpa'])}")
     print("-" * 80)
 
-    # Print a snippet of the resume text for reference
+    # Print a safe ASCII snippet of the resume/OCR text for reference
     snippet = text[:300].replace('\n', ' ')
-    print(f"  - Resume Snippet       : \"{snippet}...\"")
+    safe_snippet = snippet.encode('ascii', errors='ignore').decode('ascii')
+    print(f"  - Resume Snippet       : \"{safe_snippet}...\"")
     print("=" * 80 + "\n")
 
     return extracted_details

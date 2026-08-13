@@ -20,6 +20,10 @@ export default function VerificationModal({ isOpen, onClose, initialData = {}, o
 
     const [selectedFile, setSelectedFile] = useState(null);
     const [previewUrl, setPreviewUrl] = useState(null);
+
+    const [backFile, setBackFile] = useState(null);
+    const [backPreviewUrl, setBackPreviewUrl] = useState(null);
+
     const [loading, setLoading] = useState(false);
     const [errorMsg, setErrorMsg] = useState('');
     const [result, setResult] = useState(null);
@@ -43,9 +47,26 @@ export default function VerificationModal({ isOpen, onClose, initialData = {}, o
         }
     };
 
+    const handleBackFileChange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            setBackFile(file);
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setBackPreviewUrl(reader.result);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
     const removeFile = () => {
         setSelectedFile(null);
         setPreviewUrl(null);
+    };
+
+    const removeBackFile = () => {
+        setBackFile(null);
+        setBackPreviewUrl(null);
     };
 
     const handleSubmit = async (e) => {
@@ -79,8 +100,13 @@ export default function VerificationModal({ isOpen, onClose, initialData = {}, o
             if (selectedFile) {
                 data.append('image', selectedFile);
             }
+            if (backFile) {
+                data.append('backImage', backFile);
+            }
 
-            const res = await api.post('/api/ai-verification/submit', data);
+            const res = await api.post('/api/ai-verification/submit', data, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
 
             setResult(res.data);
             setStep('RESULT');
@@ -132,51 +158,105 @@ export default function VerificationModal({ isOpen, onClose, initialData = {}, o
                                 💡 <strong>Note:</strong> Fields are optional. Entering or uploading <strong>any one</strong> credential (Register No, LinkedIn, Picture Upload, Resume, or Links) is enough to initiate verification!
                             </div>
 
-                            {/* Picture / ID Proof File Upload */}
+                            {/* Dual Picture / ID Proof File Upload */}
                             <div className="space-y-3">
                                 <h3 className="text-xs font-bold text-accent-400 uppercase tracking-wider flex items-center gap-2">
-                                    <ImageIcon className="w-4 h-4" /> Upload ID Proof or Degree Certificate Picture
+                                    <ImageIcon className="w-4 h-4" /> Upload Documents / Proof Pictures (Front & Back OCR)
                                 </h3>
 
-                                {selectedFile ? (
-                                    <div className="relative p-3 rounded-xl border border-surface-700 bg-surface-800/50 flex items-center justify-between gap-4">
-                                        <div className="flex items-center gap-3">
-                                            {selectedFile.type?.includes('pdf') || selectedFile.name?.endsWith('.pdf') ? (
-                                                <div className="w-16 h-16 rounded-lg bg-rose-500/10 border border-rose-500/30 flex flex-col items-center justify-center text-rose-400">
-                                                    <FileText className="w-8 h-8" />
-                                                    <span className="text-[9px] font-bold uppercase mt-1">PDF</span>
+                                <div className="grid sm:grid-cols-2 gap-4">
+                                    {/* Dropzone 1: Front Side / Resume / Certificate */}
+                                    <div>
+                                        <label className="block text-[11px] font-semibold text-surface-300 mb-1.5">
+                                            📄 Document 1: Front Side / Resume / Certificate
+                                        </label>
+                                        {selectedFile ? (
+                                            <div className="relative p-3 rounded-xl border border-surface-700 bg-surface-800/50 flex items-center justify-between gap-2">
+                                                <div className="flex items-center gap-2.5 min-w-0">
+                                                    {selectedFile.type?.includes('pdf') || selectedFile.name?.endsWith('.pdf') ? (
+                                                        <div className="w-10 h-10 rounded-lg bg-rose-500/10 border border-rose-500/30 flex flex-col items-center justify-center text-rose-400 shrink-0">
+                                                            <FileText className="w-5 h-5" />
+                                                            <span className="text-[7px] font-bold uppercase">PDF</span>
+                                                        </div>
+                                                    ) : (
+                                                        <img src={previewUrl} alt="Front preview" className="w-10 h-10 object-cover rounded-lg border border-surface-600 shrink-0" />
+                                                    )}
+                                                    <div className="min-w-0">
+                                                        <p className="text-xs font-bold text-white truncate">{selectedFile.name}</p>
+                                                        <p className="text-[9px] text-emerald-400 font-semibold mt-0.5">
+                                                            {(selectedFile.size / 1024).toFixed(1)} KB · Front
+                                                        </p>
+                                                    </div>
                                                 </div>
-                                            ) : (
-                                                <img src={previewUrl} alt="Upload preview" className="w-16 h-16 object-cover rounded-lg border border-surface-600" />
-                                            )}
-                                            <div>
-                                                <p className="text-xs font-bold text-white max-w-[250px] truncate">{selectedFile.name}</p>
-                                                <p className="text-[10px] text-emerald-400 font-semibold mt-0.5">
-                                                    {(selectedFile.size / 1024).toFixed(1)} KB · Ready to Extract & Verify
-                                                </p>
+                                                <button
+                                                    type="button"
+                                                    onClick={removeFile}
+                                                    className="p-1.5 rounded-lg text-rose-400 hover:bg-rose-500/10 transition-colors shrink-0"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
                                             </div>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={removeFile}
-                                            className="p-2 rounded-lg text-rose-400 hover:bg-rose-500/10 transition-colors"
-                                        >
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
+                                        ) : (
+                                            <label className="border-2 border-dashed border-surface-700 hover:border-accent-500 rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer transition-colors bg-surface-800/30 hover:bg-surface-800/60 text-center h-28">
+                                                <Upload className="w-6 h-6 text-accent-400 mb-1" />
+                                                <span className="text-[11px] font-medium text-surface-200">Front / Resume / Degree</span>
+                                                <span className="text-[9px] text-surface-500 mt-0.5">PDF, PNG, JPG</span>
+                                                <input
+                                                    type="file"
+                                                    accept="image/*,.pdf"
+                                                    onChange={handleFileChange}
+                                                    className="hidden"
+                                                />
+                                            </label>
+                                        )}
                                     </div>
-                                ) : (
-                                    <label className="border-2 border-dashed border-surface-700 hover:border-accent-500 rounded-xl p-5 flex flex-col items-center justify-center cursor-pointer transition-colors bg-surface-800/30 hover:bg-surface-800/60">
-                                        <Upload className="w-8 h-8 text-accent-400 mb-2" />
-                                        <span className="text-xs font-medium text-surface-200">Click to select ID Card / Degree Certificate Picture</span>
-                                        <span className="text-[10px] text-surface-500 mt-1">Supports PNG, JPG, WEBP or PDF (Max 10MB)</span>
-                                        <input
-                                            type="file"
-                                            accept="image/*,.pdf"
-                                            onChange={handleFileChange}
-                                            className="hidden"
-                                        />
-                                    </label>
-                                )}
+
+                                    {/* Dropzone 2: Back Side / ID Card Back (Optional) */}
+                                    <div>
+                                        <label className="block text-[11px] font-semibold text-surface-300 mb-1.5">
+                                            📑 Document 2: Back Side / ID Back (Optional)
+                                        </label>
+                                        {backFile ? (
+                                            <div className="relative p-3 rounded-xl border border-surface-700 bg-surface-800/50 flex items-center justify-between gap-2">
+                                                <div className="flex items-center gap-2.5 min-w-0">
+                                                    {backFile.type?.includes('pdf') || backFile.name?.endsWith('.pdf') ? (
+                                                        <div className="w-10 h-10 rounded-lg bg-rose-500/10 border border-rose-500/30 flex flex-col items-center justify-center text-rose-400 shrink-0">
+                                                            <FileText className="w-5 h-5" />
+                                                            <span className="text-[7px] font-bold uppercase">PDF</span>
+                                                        </div>
+                                                    ) : (
+                                                        <img src={backPreviewUrl} alt="Back preview" className="w-10 h-10 object-cover rounded-lg border border-surface-600 shrink-0" />
+                                                    )}
+                                                    <div className="min-w-0">
+                                                        <p className="text-xs font-bold text-white truncate">{backFile.name}</p>
+                                                        <p className="text-[9px] text-emerald-400 font-semibold mt-0.5">
+                                                            {(backFile.size / 1024).toFixed(1)} KB · Back
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={removeBackFile}
+                                                    className="p-1.5 rounded-lg text-rose-400 hover:bg-rose-500/10 transition-colors shrink-0"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <label className="border-2 border-dashed border-surface-700 hover:border-accent-500 rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer transition-colors bg-surface-800/30 hover:bg-surface-800/60 text-center h-28">
+                                                <Upload className="w-6 h-6 text-accent-400 mb-1" />
+                                                <span className="text-[11px] font-medium text-surface-200">Back Side (Optional)</span>
+                                                <span className="text-[9px] text-surface-500 mt-0.5">PDF, PNG, JPG</span>
+                                                <input
+                                                    type="file"
+                                                    accept="image/*,.pdf"
+                                                    onChange={handleBackFileChange}
+                                                    className="hidden"
+                                                />
+                                            </label>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
 
                             {/* Academic Credentials */}
@@ -356,6 +436,65 @@ export default function VerificationModal({ isOpen, onClose, initialData = {}, o
                                     </div>
                                 </div>
                             </div>
+
+                            {/* Groq AI Extracted ID Card Credentials Card */}
+                            {result.groqStructured && (
+                                <div className="card space-y-4 border border-primary-500/30 bg-primary-500/5">
+                                    <div className="flex items-center justify-between border-b border-primary-500/20 pb-3">
+                                        <h4 className="text-xs font-bold text-primary-300 uppercase tracking-wider flex items-center gap-2">
+                                            <Sparkles className="w-4 h-4 text-primary-400" />
+                                            Extracted ID Card Credentials (Groq AI LLM)
+                                        </h4>
+                                        <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-primary-500/20 text-primary-300 font-bold border border-primary-500/30">
+                                            llama-3.1-8b-instant
+                                        </span>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                                        <div className="p-3 rounded-xl bg-surface-800/80 border border-surface-700/80">
+                                            <span className="text-surface-400 block text-[10px] font-medium">👤 Extracted Name</span>
+                                            <span className="font-bold text-white text-sm">
+                                                {result.groqStructured.name || 'N/A'}
+                                            </span>
+                                        </div>
+                                        <div className="p-3 rounded-xl bg-surface-800/80 border border-surface-700/80">
+                                            <span className="text-surface-400 block text-[10px] font-medium">🆔 Roll Number</span>
+                                            <span className="font-mono font-bold text-accent-300 text-sm">
+                                                {result.groqStructured.roll_number || 'N/A'}
+                                            </span>
+                                        </div>
+                                        <div className="p-3 rounded-xl bg-surface-800/80 border border-surface-700/80">
+                                            <span className="text-surface-400 block text-[10px] font-medium">📧 College Email</span>
+                                            <span className="font-bold text-emerald-400 truncate block">
+                                                {result.groqStructured.email || 'N/A'}
+                                            </span>
+                                        </div>
+                                        <div className="p-3 rounded-xl bg-surface-800/80 border border-surface-700/80">
+                                            <span className="text-surface-400 block text-[10px] font-medium">🎓 Department</span>
+                                            <span className="font-bold text-white">
+                                                {result.groqStructured.department || 'N/A'}
+                                            </span>
+                                        </div>
+                                        <div className="p-3 rounded-xl bg-surface-800/80 border border-surface-700/80">
+                                            <span className="text-surface-400 block text-[10px] font-medium">📅 Graduation Period</span>
+                                            <span className="font-bold text-white">
+                                                {result.groqStructured.graduation_start_year || ''} - {result.groqStructured.graduation_end_year || ''}
+                                            </span>
+                                        </div>
+                                        <div className="p-3 rounded-xl bg-surface-800/80 border border-surface-700/80">
+                                            <span className="text-surface-400 block text-[10px] font-medium">🎂 Date of Birth</span>
+                                            <span className="font-bold text-white">
+                                                {result.groqStructured.date_of_birth || 'N/A'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    {result.groqStructured.additional_info && (
+                                        <div className="p-2.5 rounded-lg bg-surface-800/50 border border-surface-700/50 text-[11px] flex flex-col gap-1">
+                                            <span className="text-surface-400 font-medium">ℹ️ Additional Info / Address:</span>
+                                            <span className="text-surface-200">{result.groqStructured.additional_info}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
                             {/* Extracted Resume / Certificate Credentials Card */}
                             {result.extractedCollegeDetails && (

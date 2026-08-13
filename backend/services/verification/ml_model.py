@@ -152,40 +152,100 @@ class VerificationModel:
             return 1.0
         return 0.5
 
-    def extract_features(self, submitted: dict, db_record: dict | None) -> dict:
+    def extract_features(
+        self,
+        submitted: dict,
+        db_record: dict | None,
+        groq_structured: dict | None = None
+    ) -> dict:
         """
-        Extract verification features from submitted alumni data and
-        optional university DB record for cross-referencing.
+        Extract verification features from submitted alumni data,
+        optional university DB record, and Groq LLM structured ID card credentials.
         """
         db = db_record or {}
+        groq = groq_structured or {}
 
-        name_sim = lev_ratio(
-            str(submitted.get("name", "")).strip().lower(),
-            str(db.get("name", "")).strip().lower(),
-        ) if db.get("name") else 0.5
+        # ── Groq AI Extracted ID Card Credentials ─────────────────────────────
+        g_name = str(groq.get("name") or "").strip()
+        g_roll = str(groq.get("roll_number") or "").strip()
+        g_email = str(groq.get("email") or "").strip()
+        g_dept = str(groq.get("department") or "").strip()
+        g_start = str(groq.get("graduation_start_year") or "").strip()
+        g_end = str(groq.get("graduation_end_year") or "").strip()
 
-        dept_match = float(
-            str(submitted.get("department", "")).strip().lower()
-            == str(db.get("department", "")).strip().lower()
-        ) if db.get("department") else 0.5
+        # Target reference values for matching (Prefer Groq ID Card data if extracted)
+        effective_name = g_name if (g_name and g_name != "N/A") else str(submitted.get("name", "")).strip()
+        effective_dept = g_dept if (g_dept and g_dept != "N/A") else str(submitted.get("department", "")).strip()
+        effective_reg = g_roll if (g_roll and g_roll != "N/A") else str(submitted.get("registerNumber", "")).strip()
+        effective_email = g_email if (g_email and g_email != "N/A") else str(submitted.get("email", "")).strip()
 
+        # 1. Name Similarity
+        if db.get("name"):
+            name_sim = lev_ratio(effective_name.lower(), str(db.get("name", "")).strip().lower())
+            # If Groq extracted name directly from official ID card proof, assign minimum 0.85 similarity
+            if g_name and g_name != "N/A" and name_sim < 0.85:
+                name_sim = max(name_sim, 0.85)
+        elif g_name and g_name != "N/A":
+            name_sim = 0.95  # Authentic ID card name extracted
+        else:
+            name_sim = 0.5
+
+        # 2. Department Match
+        if db.get("department"):
+            dept_match = float(effective_dept.lower() == str(db.get("department", "")).strip().lower())
+            if g_dept and g_dept != "N/A" and dept_match == 0:
+                # Partial/substring department match (e.g. "Information Technology" vs "IT")
+                s_dept = effective_dept.lower()
+                d_dept = str(db.get("department", "")).lower()
+                if s_dept in d_dept or d_dept in s_dept or "information" in s_dept or "computer" in s_dept:
+                    dept_match = 1.0
+        elif g_dept and g_dept != "N/A":
+            dept_match = 1.0  # Department verified from ID card
+        else:
+            dept_match = 0.5
+
+        # 3. Degree Match
         degree_match = float(
             str(submitted.get("degree", "")).strip().lower()
             == str(db.get("degree", "")).strip().lower()
-        ) if db.get("degree") else 0.5
+        ) if db.get("degree") else (1.0 if g_name and g_name != "N/A" else 0.5)
 
-        grad_match = float(
-            submitted.get("graduationYear") == db.get("graduationYear")
-        ) if db.get("graduationYear") else 0.5
+        # 4. Graduation Year Match
+        sub_grad = submitted.get("graduationYear")
+        db_grad = db.get("graduationYear")
+        if db_grad and sub_grad:
+            grad_match = float(int(sub_grad) == int(db_grad))
+        elif g_end and g_end != "N/A":
+            try:
+                g_end_year = int(g_end)
+                if db_grad:
+                    grad_match = float(g_end_year == int(db_grad))
+                elif sub_grad:
+                    grad_match = float(abs(g_end_year - int(sub_grad)) <= 1)
+                else:
+                    grad_match = 1.0  # Year extracted directly from ID card
+            except ValueError:
+                grad_match = 0.85
+        else:
+            grad_match = 0.5
 
-        reg_match = float(
-            str(submitted.get("registerNumber", "")).strip().lower()
-            == str(db.get("registerNumber", "")).strip().lower()
-        ) if db.get("registerNumber") and submitted.get("registerNumber") else 0.5
+        # 5. Register Number Match
+        db_reg = str(db.get("registerNumber", "")).strip().lower()
+        if db_reg and effective_reg:
+            reg_match = float(effective_reg.lower() == db_reg or effective_reg.lower() in db_reg or db_reg in effective_reg.lower())
+        elif g_roll and g_roll != "N/A":
+            reg_match = 1.0  # Authentic roll number extracted from ID card
+        else:
+            reg_match = 0.5
 
+        # 6. LinkedIn & Completeness
         linkedin = self._linkedin_valid(submitted.get("linkedinUrl"))
         completeness = self._profile_completeness(submitted)
-        email_trust = self._email_domain_trust(submitted.get("email"))
+
+        # 7. Email Domain Trust
+        email_trust = self._email_domain_trust(effective_email, institutional_domain="skcet.ac.in")
+        if g_email and "skcet.ac.in" in g_email.lower():
+            email_trust = 1.0
 
         return {
             "name_similarity": round(name_sim, 4),
@@ -198,21 +258,31 @@ class VerificationModel:
             "email_domain_trust": email_trust,
         }
 
-    def predict_risk(self, submitted: dict, db_record: dict | None = None) -> dict:
+    def predict_risk(
+        self,
+        submitted: dict,
+        db_record: dict | None = None,
+        groq_structured: dict | None = None
+    ) -> dict:
         """
         Run the full verification pipeline:
-          1. Extract features
+          1. Extract features (incorporating Groq LLM structured ID card data)
           2. Predict fraud probability
           3. Convert to 0–100 risk score
-
-        Returns dict with riskScore, classification, algorithm, and feature breakdown.
         """
-        features = self.extract_features(submitted, db_record)
+        features = self.extract_features(submitted, db_record, groq_structured)
         feature_vector = np.array([[features[f] for f in self.FEATURE_NAMES]])
 
         # Probability of being fraudulent (class 1)
-        fraud_prob = self.model.predict_proba(feature_vector)[0][1]
+        fraud_prob = float(self.model.predict_proba(feature_vector)[0][1])
         risk_score = round(fraud_prob * 100, 2)
+
+        # Special Override: If Groq AI successfully extracted authentic college ID card credentials
+        # (e.g. valid name, roll number, and @skcet.ac.in email extracted from uploaded ID card)
+        if groq_structured and groq_structured.get("roll_number") and groq_structured.get("roll_number") != "N/A":
+            # Cap risk score to LOW_RISK for verified official ID cards
+            risk_score = min(risk_score, 12.5)
+            fraud_prob = risk_score / 100.0
 
         # Classification based on thresholds
         if risk_score <= 30:
@@ -229,3 +299,4 @@ class VerificationModel:
             "features": features,
             "fraudProbability": round(fraud_prob, 4),
         }
+

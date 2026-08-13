@@ -5,9 +5,6 @@ const api = axios.create({
     // Do not leave the sign-in or registration button spinning indefinitely
     // when the API server is not running.
     timeout: 15000,
-    headers: {
-        'Content-Type': 'application/json',
-    },
 });
 
 // Request interceptor

@@ -294,7 +294,7 @@ async function triggerAIVerification(profileId) {
 //  POST /api/ai-verification/submit (Interactive Credential Submission)
 // ═════════════════════════════════════════════════════════════════════════════
 
-router.post('/submit', requireAuth, upload.single('image'), async (req, res) => {
+router.post('/submit', requireAuth, upload.fields([{ name: 'image', maxCount: 1 }, { name: 'backImage', maxCount: 1 }]), async (req, res) => {
     try {
         const userId = parseInt(req.userId);
         const profile = await prisma.alumniProfile.findUnique({
@@ -319,13 +319,21 @@ router.post('/submit', requireAuth, upload.single('image'), async (req, res) => 
             links,
         } = req.body || {};
 
-        // Handle uploaded proof picture / PDF file
+        // Handle uploaded proof pictures / PDF files (Front & Back)
+        const frontFile = req.files?.image?.[0] || req.file;
+        const backFile = req.files?.backImage?.[0];
+
         let uploadedImageUrl = req.body?.imageUrl || '';
-        if (req.file) {
-            console.log('📸 Uploaded file detected in Express backend:', req.file);
-            uploadedImageUrl = `/uploads/certificates/${req.file.filename}`;
-        } else {
-            console.log('⚠️ No file attached in req.file (Form submission was text-only)');
+        if (frontFile) {
+            console.log('📸 Front file detected in Express backend:', frontFile.filename);
+            uploadedImageUrl = `/uploads/certificates/${frontFile.filename}`;
+        }
+        if (backFile) {
+            console.log('📸 Back file detected in Express backend:', backFile.filename);
+            if (!uploadedImageUrl) uploadedImageUrl = `/uploads/certificates/${backFile.filename}`;
+        }
+        if (!frontFile && !backFile) {
+            console.log('⚠️ No files attached in req.files (Form submission was text-only)');
         }
 
         // Validate that AT LEAST ONE credential was provided (no single field is mandatory!)
@@ -440,7 +448,8 @@ router.post('/submit', requireAuth, upload.single('image'), async (req, res) => 
                 phone: submittedData.phone || '',
                 resumeText: submittedData.resumeText || '',
                 profilePhotoUrl: submittedData.imageUrl || '',
-                imageFilePath: req.file ? req.file.path : '',
+                imageFilePath: frontFile ? frontFile.path : '',
+                backImageFilePath: backFile ? backFile.path : '',
                 dbRecords: dbData,
             };
 
@@ -588,6 +597,7 @@ router.post('/submit', requireAuth, upload.single('image'), async (req, res) => 
             algorithm: result.algorithm || 'CatBoost/RandomForest',
             extractedCollegeDetails: result.extractedCollegeDetails || null,
             ocrExtractedText: result.ocrExtractedText || null,
+            groqStructured: result.groqStructured || null,
         });
 
     } catch (err) {
