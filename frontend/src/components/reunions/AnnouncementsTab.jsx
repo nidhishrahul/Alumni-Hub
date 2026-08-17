@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Megaphone, Send, Clock, Sparkles } from 'lucide-react';
 
-export default function AnnouncementsTab({ reunion, user, isCoordinator, onReunionUpdate }) {
+export default function AnnouncementsTab({ reunion, isCoordinator }) {
     const [announcements, setAnnouncements] = useState([]);
     const [loading, setLoading] = useState(true);
     const [title, setTitle] = useState('');
@@ -15,7 +15,7 @@ export default function AnnouncementsTab({ reunion, user, isCoordinator, onReuni
     const fetchAnnouncements = async () => {
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch(`http://localhost:3001/api/reunions/${reunion.id}/announcements`, {
+            const res = await fetch(`/api/reunions/${reunion.id}/announcements`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (res.ok) {
@@ -31,7 +31,7 @@ export default function AnnouncementsTab({ reunion, user, isCoordinator, onReuni
     const markRead = async (announcementId) => {
         try {
             const token = localStorage.getItem('token');
-            await fetch(`http://localhost:3001/api/reunions/${reunion.id}/announcements/${announcementId}/read`, {
+            await fetch(`/api/reunions/${reunion.id}/announcements/${announcementId}/read`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -43,7 +43,7 @@ export default function AnnouncementsTab({ reunion, user, isCoordinator, onReuni
         setPosting(true);
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch(`http://localhost:3001/api/reunions/${reunion.id}/announcements`, {
+            const res = await fetch(`/api/reunions/${reunion.id}/announcements`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({ title: title.trim(), body: body.trim() })
@@ -78,11 +78,11 @@ export default function AnnouncementsTab({ reunion, user, isCoordinator, onReuni
                 </div>
                 <div>
                     <h2 className="text-xl font-bold text-white">Announcements</h2>
-                    <p className="text-sm text-surface-400">Updates from coordinator</p>
+                    <p className="text-sm text-surface-400">Updates from the reunion organizer</p>
                 </div>
             </div>
 
-            {/* Post Form (Coordinator Only) */}
+            {/* Post Form (Organizer Only) */}
             {isCoordinator && (
                 <div className="card mb-8 border-red-500/10">
                     <h3 className="text-sm font-bold text-surface-300 mb-4">Post an Update</h3>
@@ -105,7 +105,7 @@ export default function AnnouncementsTab({ reunion, user, isCoordinator, onReuni
             {/* Announcements List */}
             {announcements.length > 0 ? (
                 <div className="space-y-4">
-                    {announcements.map((a, i) => (
+                    {announcements.map((a) => (
                         <div key={a.id} className={`relative card transition-all ${a.isNew ? 'border-red-500/30 bg-red-500/5' : ''
                             }`}>
                             {a.isNew && (
@@ -141,7 +141,7 @@ export default function AnnouncementsTab({ reunion, user, isCoordinator, onReuni
                     <p className="text-surface-400 text-sm max-w-sm mx-auto">
                         {isCoordinator
                             ? "Post your first announcement to keep your batchmates in the loop."
-                            : "The coordinator hasn't posted any updates yet. Check back soon!"}
+                            : "The organizer hasn't posted any updates yet. Check back soon!"}
                     </p>
                 </div>
             ) : null}

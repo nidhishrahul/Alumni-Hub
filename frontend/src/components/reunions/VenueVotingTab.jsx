@@ -1,258 +1,188 @@
-import { useState, useEffect } from 'react';
-import { MapPin, Vote, CheckCircle, ExternalLink, Lock, Trophy, Users } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { CheckCircle, Clock, ExternalLink, Lock, MapPin, Trophy, Users } from 'lucide-react';
+import api from '../../services/api';
 
-export default function VenueVotingTab({ reunion, user, isCoordinator, onReunionUpdate }) {
+const readOptions = (value) => {
+    try {
+        const parsed = JSON.parse(value || '[]');
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+};
+
+const readFinalVenue = (value) => {
+    try {
+        return JSON.parse(value || 'null');
+    } catch {
+        return null;
+    }
+};
+
+export default function VenueVotingTab({ reunion, user, onReunionUpdate }) {
     const [votes, setVotes] = useState({ voteCounts: [], totalVotes: 0 });
     const [userVote, setUserVote] = useState(null);
-    const [loading, setLoading] = useState(true);
     const [voting, setVoting] = useState(false);
-    const [finalizing, setFinalizing] = useState(false);
+    const [error, setError] = useState('');
+    const [now, setNow] = useState(Date.now());
 
-    const venueOptions = JSON.parse(reunion.venueOptions || '[]');
-    const isLocked = reunion.status !== 'VENUE_VOTING';
+    const venueOptions = useMemo(
+        () => readOptions(reunion.venueOptions),
+        [reunion.venueOptions],
+    );
+    const finalVenue = useMemo(
+        () => readFinalVenue(reunion.finalVenue),
+        [reunion.finalVenue],
+    );
+    const deadlineTime = reunion.votingDeadline
+        ? new Date(reunion.votingDeadline).getTime()
+        : null;
     const isConfirmed = reunion.status === 'CONFIRMED';
+    const votingOpen = !isConfirmed && (!deadlineTime || deadlineTime > now);
+
+    const fetchVotes = useCallback(async () => {
+        try {
+            const response = await api.get('/api/reunions/' + reunion.id + '/venues/votes');
+            setVotes(response.data);
+        } catch (requestError) {
+            setError(requestError.response?.data?.detail || 'Unable to load venue votes');
+        }
+    }, [reunion.id]);
 
     useEffect(() => {
         fetchVotes();
-        const myVote = reunion.venueVotes?.find(v => v.user?.id === user?.id);
-        if (myVote) setUserVote(myVote.chosenOptionIndex);
-    }, [reunion]);
+        const myVote = reunion.venueVotes?.find((vote) => vote.user?.id === user?.id);
+        setUserVote(myVote?.chosenOptionIndex ?? null);
+    }, [fetchVotes, reunion.venueVotes, user?.id]);
 
-    const fetchVotes = async () => {
-        try {
-            const token = localStorage.getItem('token');
-            const res = await fetch(`http://localhost:3001/api/reunions/${reunion.id}/venues/votes`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (res.ok) setVotes(await res.json());
-        } catch (err) {
-            console.error('Fetch venue votes error:', err);
-        } finally {
-            setLoading(false);
-        }
-    };
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setNow(Date.now());
+            if (deadlineTime && Date.now() >= deadlineTime && !isConfirmed) {
+                onReunionUpdate();
+            }
+        }, 1000);
+        return () => clearInterval(timer);
+    }, [deadlineTime, isConfirmed, onReunionUpdate]);
 
     const handleVote = async (optionIndex) => {
-        if (isLocked || voting) return;
+        if (!votingOpen || voting) return;
         setVoting(true);
+        setError('');
         try {
-            const token = localStorage.getItem('token');
-            const res = await fetch(`http://localhost:3001/api/reunions/${reunion.id}/venues/vote`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ chosenOptionIndex: optionIndex })
+            await api.post('/api/reunions/' + reunion.id + '/venues/vote', {
+                chosenOptionIndex: optionIndex,
             });
-            if (res.ok) {
-                setUserVote(optionIndex);
-                await fetchVotes();
-            }
-        } catch (err) {
-            console.error('Venue vote error:', err);
+            setUserVote(optionIndex);
+            await fetchVotes();
+        } catch (requestError) {
+            setError(requestError.response?.data?.detail || 'Unable to save your vote');
         } finally {
             setVoting(false);
         }
     };
 
-    const handleFinalize = async (index) => {
-        if (finalizing) return;
-        setFinalizing(true);
-        try {
-            const token = localStorage.getItem('token');
-            const res = await fetch(`http://localhost:3001/api/reunions/${reunion.id}/venues/finalize`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ winningVenueIndex: index })
-            });
-            if (res.ok) onReunionUpdate();
-        } catch (err) {
-            console.error('Finalize venue error:', err);
-        } finally {
-            setFinalizing(false);
-        }
-    };
-
-    const getWinnerIndex = () => {
-        if (!votes.voteCounts.length) return -1;
-        let maxCount = 0, winnerIdx = 0;
-        votes.voteCounts.forEach((vc, i) => {
-            if (vc.count > maxCount) { maxCount = vc.count; winnerIdx = i; }
-        });
-        return winnerIdx;
-    };
-
-    const winnerIndex = getWinnerIndex();
-
-    // If in PLANNING state, show a placeholder
-    if (reunion.status === 'PLANNING') {
-        return (
-            <div className="animate-fade-in text-center py-16">
-                <div className="w-16 h-16 rounded-full bg-purple-500/10 border border-purple-500/20 flex items-center justify-center mx-auto mb-6">
-                    <Lock className="w-7 h-7 text-purple-400" />
-                </div>
-                <h3 className="text-xl font-bold text-white mb-3">Venue Voting Locked</h3>
-                <p className="text-surface-400 max-w-md mx-auto">
-                    Venue voting will open once the reunion date has been finalized.
-                    Complete date voting first!
-                </p>
-            </div>
-        );
-    }
-
     return (
         <div className="animate-fade-in">
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
                 <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center">
                         <MapPin className="w-5 h-5 text-purple-400" />
                     </div>
                     <div>
-                        <h2 className="text-xl font-bold text-white">Venue Voting</h2>
+                        <h2 className="text-xl font-bold text-white">Venue preferences</h2>
                         <p className="text-sm text-surface-400">
-                            {isConfirmed ? 'Venue has been confirmed' : 'Vote for your preferred venue'}
+                            {votingOpen ? 'Choose the venue your batch prefers' : 'Venue voting is closed'}
                         </p>
                     </div>
                 </div>
-                {isConfirmed && (
-                    <div className="flex items-center gap-2 text-sm text-green-400 bg-green-500/10 px-3 py-1.5 rounded-full border border-green-500/20">
-                        <CheckCircle className="w-3.5 h-3.5" />
-                        Confirmed
-                    </div>
-                )}
+                <div className="flex items-center gap-2 rounded-full border border-surface-700 bg-surface-800/50 px-3 py-2 text-xs text-surface-300">
+                    {votingOpen ? <Clock className="w-3.5 h-3.5 text-amber-400" /> : <Lock className="w-3.5 h-3.5" />}
+                    {reunion.votingDeadline
+                        ? 'Closes ' + new Date(reunion.votingDeadline).toLocaleString('en-IN')
+                        : 'No deadline configured'}
+                </div>
             </div>
 
-            {votes.totalVotes > 0 && (
-                <div className="flex items-center gap-4 mb-6 p-3 rounded-xl bg-surface-800/30 border border-surface-700/30">
-                    <Users className="w-4 h-4 text-surface-400" />
-                    <span className="text-sm text-surface-300">
-                        <span className="font-semibold text-white">{votes.totalVotes}</span> vote{votes.totalVotes !== 1 ? 's' : ''} cast
-                    </span>
+            <div className="flex items-center gap-3 mb-6 p-3 rounded-xl bg-surface-800/30 border border-surface-700/30">
+                <Users className="w-4 h-4 text-surface-400" />
+                <span className="text-sm text-surface-300">
+                    <span className="font-semibold text-white">{votes.totalVotes}</span> verified batch vote{votes.totalVotes === 1 ? '' : 's'}
+                </span>
+            </div>
+
+            {error && (
+                <div className="mb-5 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300">
+                    {error}
                 </div>
             )}
 
-            {/* Venue Cards */}
             <div className="grid gap-4">
                 {venueOptions.map((venue, index) => {
-                    const voteData = votes.voteCounts.find(v => v.optionIndex === index);
-                    const count = voteData?.count || 0;
-                    const percentage = votes.totalVotes > 0 ? Math.round((count / votes.totalVotes) * 100) : 0;
+                    const count = votes.voteCounts.find((item) => item.optionIndex === index)?.count || 0;
+                    const percentage = votes.totalVotes
+                        ? Math.round((count / votes.totalVotes) * 100)
+                        : 0;
                     const isMyVote = userVote === index;
-                    const isWinner = isConfirmed && index === winnerIndex && count > 0;
+                    const isWinner = isConfirmed && finalVenue &&
+                        finalVenue.name === venue.name && finalVenue.address === venue.address;
 
                     return (
                         <div
-                            key={index}
-                            className={`
-                                relative rounded-2xl border p-5 transition-all duration-300
-                                ${isWinner
-                                    ? 'border-green-500/40 bg-green-500/5 shadow-lg shadow-green-500/10'
+                            key={venue.name + index}
+                            className={'relative rounded-2xl border p-5 transition-all ' +
+                                (isWinner
+                                    ? 'border-green-500/40 bg-green-500/5'
                                     : isMyVote
                                         ? 'border-purple-500/40 bg-purple-500/5'
-                                        : 'border-surface-700/50 bg-surface-800/30 hover:border-surface-600/50'}
-                            `}
+                                        : 'border-surface-700/50 bg-surface-800/30')}
                         >
                             {isWinner && (
-                                <div className="absolute -top-3 right-4 flex items-center gap-1.5 bg-green-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow-lg">
-                                    <Trophy className="w-3 h-3" />
-                                    Confirmed
-                                </div>
+                                <span className="absolute -top-3 right-4 flex items-center gap-1.5 rounded-full bg-green-500 px-3 py-1 text-xs font-bold text-white">
+                                    <Trophy className="w-3 h-3" /> Final venue
+                                </span>
                             )}
-
-                            <div className="flex items-start justify-between mb-4">
-                                <div className="flex items-start gap-3 flex-1">
-                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold shrink-0 mt-0.5
-                                        ${isWinner ? 'bg-green-500/20 text-green-400' : 'bg-surface-700/50 text-surface-300'}`}>
-                                        {index + 1}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className={`font-semibold ${isWinner ? 'text-green-300' : 'text-white'}`}>
-                                            {venue.name}
-                                        </p>
-                                        <p className="text-sm text-surface-400 mt-0.5">{venue.address}</p>
-                                        {venue.mapLink && (
-                                            <a
-                                                href={venue.mapLink}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="inline-flex items-center gap-1 text-xs text-purple-400 hover:text-purple-300 mt-2 transition-colors"
-                                            >
-                                                <ExternalLink className="w-3 h-3" />
-                                                View on Map
-                                            </a>
-                                        )}
-                                    </div>
-                                </div>
-
-                                <div className="flex items-center gap-3 ml-4">
-                                    <span className="text-sm font-medium text-surface-300">
-                                        {count} vote{count !== 1 ? 's' : ''}
-                                    </span>
-                                    {!isLocked && (
-                                        <button
-                                            onClick={() => handleVote(index)}
-                                            disabled={voting}
-                                            className={`
-                                                px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200
-                                                ${isMyVote
-                                                    ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/25'
-                                                    : 'border border-surface-600 text-surface-300 hover:border-purple-500 hover:text-purple-400'}
-                                            `}
+                            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                                <div>
+                                    <p className={isWinner ? 'font-semibold text-green-300' : 'font-semibold text-white'}>
+                                        {venue.name}
+                                    </p>
+                                    <p className="text-sm text-surface-400 mt-1">{venue.address}</p>
+                                    {venue.mapLink && (
+                                        <a
+                                            href={venue.mapLink}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="mt-2 inline-flex items-center gap-1 text-xs text-purple-400 hover:text-purple-300"
                                         >
-                                            {isMyVote ? (
-                                                <span className="flex items-center gap-1.5">
-                                                    <CheckCircle className="w-3.5 h-3.5" />
-                                                    Voted
-                                                </span>
-                                            ) : 'Vote'}
-                                        </button>
+                                            <ExternalLink className="w-3 h-3" /> View map
+                                        </a>
                                     )}
+                                    <p className="text-xs text-surface-400 mt-2">{count} vote{count === 1 ? '' : 's'} · {percentage}%</p>
                                 </div>
+                                {votingOpen && (
+                                    <button
+                                        type="button"
+                                        onClick={() => handleVote(index)}
+                                        disabled={voting}
+                                        className={isMyVote ? 'btn-primary text-sm' : 'btn-secondary text-sm'}
+                                    >
+                                        {isMyVote
+                                            ? <span className="flex items-center gap-2"><CheckCircle className="w-4 h-4" /> Selected</span>
+                                            : 'Vote for this venue'}
+                                    </button>
+                                )}
                             </div>
-
-                            {/* Progress Bar */}
-                            <div className="relative h-2 bg-surface-700/50 rounded-full overflow-hidden">
+                            <div className="mt-4 h-2 overflow-hidden rounded-full bg-surface-700/50">
                                 <div
-                                    className={`absolute inset-y-0 left-0 rounded-full transition-all duration-700 ease-out
-                                        ${isWinner ? 'bg-gradient-to-r from-green-500 to-green-400' : 'bg-gradient-to-r from-purple-600 to-purple-400'}`}
-                                    style={{ width: `${percentage}%` }}
+                                    className={isWinner ? 'h-full bg-green-500' : 'h-full bg-purple-500'}
+                                    style={{ width: percentage + '%' }}
                                 />
-                            </div>
-                            <div className="flex justify-between mt-2">
-                                <span className="text-xs text-surface-500">{percentage}%</span>
                             </div>
                         </div>
                     );
                 })}
             </div>
-
-            {/* Coordinator Finalize */}
-            {isCoordinator && !isLocked && votes.totalVotes > 0 && (
-                <div className="mt-8 p-5 rounded-2xl border border-amber-500/20 bg-amber-500/5">
-                    <h3 className="text-sm font-bold text-amber-400 mb-3 flex items-center gap-2">
-                        <Vote className="w-4 h-4" />
-                        Close Voting & Confirm Venue
-                    </h3>
-                    <p className="text-xs text-surface-400 mb-4">
-                        Select the winning venue to confirm the reunion details. This will move the reunion to Confirmed status.
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                        {venueOptions.map((venue, index) => {
-                            const voteData = votes.voteCounts.find(v => v.optionIndex === index);
-                            const count = voteData?.count || 0;
-                            return (
-                                <button
-                                    key={index}
-                                    onClick={() => handleFinalize(index)}
-                                    disabled={finalizing}
-                                    className="px-4 py-2 rounded-xl text-xs font-medium border border-amber-500/30 text-amber-300 
-                                             hover:bg-amber-500/20 transition-colors disabled:opacity-50"
-                                >
-                                    {venue.name} ({count} votes)
-                                </button>
-                            );
-                        })}
-                    </div>
-                </div>
-            )}
         </div>
     );
 }

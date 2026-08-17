@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import VerificationBadge from '../../components/VerificationBadge';
 import VerificationModal from '../../components/VerificationModal';
 
+const EMPTY_PROFILE = {};
+
 export default function Profile() {
     const { user, updateProfile } = useAuth();
     const [editing, setEditing] = useState(false);
@@ -13,7 +15,7 @@ export default function Profile() {
 
     const [isModalOpen, setIsModalOpen] = useState(false);
 
-    const profile = user?.alumniProfile || {};
+    const profile = (user?.role === 'STUDENT' ? user?.studentProfile : user?.alumniProfile) || EMPTY_PROFILE;
 
     const parseList = (val) => {
         if (!val) return [];
@@ -58,11 +60,11 @@ export default function Profile() {
                 currentCompany: profile.currentCompany || '',
                 currentDesignation: profile.currentDesignation || '',
                 linkedinUrl: profile.linkedinUrl || '',
-                skills: parseList(profile.skills).length > 0 ? parseList(profile.skills) : ['JavaScript', 'React', 'Problem Solving'],
-                interests: parseList(profile.interests).length > 0 ? parseList(profile.interests) : ['Web Development', 'Mentorship'],
+                skills: parseList(profile.skills),
+                interests: parseList(profile.interests),
             });
         }
-    }, [user]);
+    }, [profile, user]);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -239,7 +241,7 @@ export default function Profile() {
                     {editing && (
                         <div className="card space-y-4">
                             <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
-                                <GraduationCap className="w-5 h-5 text-accent-400" /> Academic & Work Info
+                                <GraduationCap className="w-5 h-5 text-accent-400" /> {user?.role === 'STUDENT' ? 'Academic Info' : 'Academic & Work Info'}
                             </h3>
                             <div className="grid sm:grid-cols-2 gap-4">
                                 <div>
@@ -275,39 +277,22 @@ export default function Profile() {
                                         placeholder="e.g. B.Tech CSE"
                                     />
                                 </div>
-                                <div>
-                                    <label className="block text-xs text-surface-400 mb-1 font-medium">LinkedIn Profile URL</label>
-                                    <input
-                                        type="text"
-                                        name="linkedinUrl"
-                                        value={formData.linkedinUrl}
-                                        onChange={handleChange}
-                                        className="input-field text-sm"
-                                        placeholder="https://linkedin.com/in/username"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs text-surface-400 mb-1 font-medium">Current Company</label>
-                                    <input
-                                        type="text"
-                                        name="currentCompany"
-                                        value={formData.currentCompany}
-                                        onChange={handleChange}
-                                        className="input-field text-sm"
-                                        placeholder="e.g. Google, Microsoft, etc."
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs text-surface-400 mb-1 font-medium">Current Designation / Role</label>
-                                    <input
-                                        type="text"
-                                        name="currentDesignation"
-                                        value={formData.currentDesignation}
-                                        onChange={handleChange}
-                                        className="input-field text-sm"
-                                        placeholder="e.g. Senior Software Engineer"
-                                    />
-                                </div>
+                                {user?.role !== 'STUDENT' && (
+                                    <>
+                                        <div>
+                                            <label className="block text-xs text-surface-400 mb-1 font-medium">LinkedIn Profile URL</label>
+                                            <input type="text" name="linkedinUrl" value={formData.linkedinUrl} onChange={handleChange} className="input-field text-sm" placeholder="https://linkedin.com/in/username" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs text-surface-400 mb-1 font-medium">Current Company</label>
+                                            <input type="text" name="currentCompany" value={formData.currentCompany} onChange={handleChange} className="input-field text-sm" placeholder="e.g. Google, Microsoft, etc." />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs text-surface-400 mb-1 font-medium">Current Designation / Role</label>
+                                            <input type="text" name="currentDesignation" value={formData.currentDesignation} onChange={handleChange} className="input-field text-sm" placeholder="e.g. Senior Software Engineer" />
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         </div>
                     )}
@@ -451,11 +436,11 @@ export default function Profile() {
                         </div>
                     </div>
 
-                    {/* Alumni Digital Twin Card */}
+                    {/* Role-aware profile completion card */}
                     <div className="card bg-gradient-to-br from-primary-900/30 to-accent-900/30 border-primary-500/20">
                         <div className="flex items-center gap-2 mb-3">
                             <Award className="w-5 h-5 text-primary-400" />
-                            <h3 className="text-sm font-bold text-white">Alumni Digital Twin</h3>
+                            <h3 className="text-sm font-bold text-white">{user?.role === 'STUDENT' ? 'Student Career Profile' : 'Alumni Digital Twin'}</h3>
                         </div>
                         <div className="space-y-3 text-xs">
                             <div className="flex justify-between">

@@ -34,7 +34,12 @@ function ProtectedRoute({ children, roles, requireVerified }) {
   if (roles) {
     const userRole = user.role?.toUpperCase();
     const allowedRoles = roles.map(r => r.toUpperCase());
-    if (!allowedRoles.includes(userRole)) return <Navigate to="/login" />;
+    if (!allowedRoles.includes(userRole)) {
+      const roleHome = ['STUDENT', 'ALUMNI', 'FACULTY', 'ADMIN'].includes(userRole)
+        ? `/${userRole.toLowerCase()}/dashboard`
+        : '/';
+      return <Navigate to={roleHome} replace />;
+    }
   }
 
   // Verified alumni check
@@ -121,9 +126,9 @@ function App() {
 
       {/* Shared (any authenticated) */}
       <Route path="/" element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
-        <Route path="reunions" element={<ReunionList />} />
-        <Route path="reunions/new" element={<ReunionCreate />} />
-        <Route path="reunions/:id" element={<ReunionHub />} />
+        <Route path="reunions" element={<ProtectedRoute roles={['ALUMNI']} requireVerified><ReunionList /></ProtectedRoute>} />
+        <Route path="reunions/new" element={<ProtectedRoute roles={['ALUMNI']} requireVerified><ReunionCreate /></ProtectedRoute>} />
+        <Route path="reunions/:id" element={<ProtectedRoute roles={['ALUMNI']} requireVerified><ReunionHub /></ProtectedRoute>} />
         <Route path="events" element={<Events />} />
         <Route path="network" element={<NetworkGraph />} />
         <Route path="chat" element={<AIChat />} />

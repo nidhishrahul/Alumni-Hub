@@ -8,6 +8,8 @@ async function main() {
 
     // ── 0. Purge Existing Data (Reverse Dependency Order) ─────────────────────
     console.log("🧹 Purging existing database records...");
+    await prisma.studentJobAction.deleteMany();
+    await prisma.jobOpportunity.deleteMany();
     await prisma.notification.deleteMany();
     await prisma.supportRequest.deleteMany();
     await prisma.verificationRequest.deleteMany();
@@ -21,6 +23,7 @@ async function main() {
     await prisma.announcement.deleteMany();
     await prisma.reunion.deleteMany();
     await prisma.batch.deleteMany();
+    await prisma.studentProfile.deleteMany();
     await prisma.alumniProfile.deleteMany();
     await prisma.user.deleteMany();
     console.log("✓ Database clean\n");
@@ -197,9 +200,9 @@ async function main() {
 
     // ── 3. Three Students ──────────────────────────────────────────────────────
     const studentData = [
-        { email: "ananya.s@student.edu", name: "Ananya Subramaniam", phone: "+91-8001122334" },
-        { email: "deepak.m@student.edu", name: "Deepak Murugan", phone: "+91-8112233445" },
-        { email: "ishita.g@student.edu", name: "Ishita Gupta", phone: "+91-8223344556" },
+        { email: "ananya.s@student.edu", name: "Ananya Subramaniam", phone: "+91-8001122334", skills: ["Python", "SQL", "Data Science"] },
+        { email: "deepak.m@student.edu", name: "Deepak Murugan", phone: "+91-8112233445", skills: ["JavaScript", "React", "Node.js"] },
+        { email: "ishita.g@student.edu", name: "Ishita Gupta", phone: "+91-8223344556", skills: ["Linux", "Networking", "Security"] },
     ];
 
     const students = [];
@@ -211,6 +214,15 @@ async function main() {
                 name: s.name,
                 role: "STUDENT",
                 phone: s.phone,
+                studentProfile: {
+                    create: {
+                        graduationYear: 2027,
+                        department: "Computer Science",
+                        degree: "B.Tech",
+                        skills: JSON.stringify(s.skills),
+                        interests: JSON.stringify(["Career Growth", "Mentorship"]),
+                    },
+                },
             },
         });
         students.push(user);
@@ -218,6 +230,14 @@ async function main() {
     }
 
     // ── 4. Sample Batch + Reunion ──────────────────────────────────────────────
+    await prisma.jobOpportunity.createMany({
+        data: [
+            { title: "Machine Learning Engineer Intern", company: "Google", location: "Bangalore", type: "Internship", description: "Build and evaluate machine-learning services.", skills: JSON.stringify(["Python", "TensorFlow", "Machine Learning"]), status: "ACTIVE" },
+            { title: "Full Stack Developer", company: "Microsoft", location: "Hyderabad", type: "Full-time", description: "Create accessible web applications and reliable Node.js services.", skills: JSON.stringify(["React", "Node.js", "TypeScript", "Azure"]), status: "ACTIVE" },
+            { title: "Data Science Intern", company: "Amazon", location: "Chennai", type: "Internship", description: "Analyze product data and prototype predictive models.", skills: JSON.stringify(["Python", "SQL", "Statistics", "Data Science"]), status: "ACTIVE" },
+        ],
+    });
+
     const batch = await prisma.batch.create({
         data: {
             department: "Computer Science",
@@ -229,13 +249,17 @@ async function main() {
     const reunion = await prisma.reunion.create({
         data: {
             batchId: batch.id,
+            createdByUserId: alumniUsers[0].id,
+            audienceType: "DEPARTMENT",
+            targetDepartment: "Computer Science",
             title: "CSE 2023 – 4-Year Reunion 🎉",
             proposedDates: JSON.stringify(["2027-01-15", "2027-02-14", "2027-03-01"]),
             venueOptions: JSON.stringify([
                 { name: "College Auditorium", address: "Main Campus, Chennai", votes: 0 },
                 { name: "Taj Coromandel", address: "Nungambakkam, Chennai", votes: 0 },
             ]),
-            status: "DATE_VOTING",
+            status: "PLANNING",
+            votingDeadline: new Date("2026-12-31T18:00:00Z"),
             countdownTargetDate: new Date("2027-03-01T18:00:00Z"),
         },
     });

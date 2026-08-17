@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { Bot, Send, User, Sparkles, Mic, Volume2, Loader2 } from 'lucide-react';
+import { Bot, Send, User, Mic, Volume2, Loader2 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
 const sampleResponses = {
     'mentor': "Based on your profile, I found 3 AI-matched mentors:\n\n1. **Dr. Priya Sharma** (Google DeepMind) — 94% match\n   • Expertise: ML, NLP, Python\n   • Reason: Shares your ML research interests\n\n2. **Rahul Verma** (Microsoft) — 88% match\n   • Expertise: Cloud, React, TypeScript\n\n3. **Anita Patel** (Amazon) — 82% match\n   • Expertise: Data Science, TensorFlow\n\nWould you like me to send a mentorship request to any of them?",
@@ -9,18 +10,35 @@ const sampleResponses = {
     'default': "I'm your AI assistant powered by our multi-agent system. I can help you with:\n\n🎓 **Mentorship** — Find AI-matched mentors\n💼 **Jobs & Referrals** — Discover matched opportunities\n🎉 **Batch Reunions** — Date & venue voting, RSVP & photo memories\n📅 **Events** — Get personalized event recommendations\n📊 **Career Insights** — View your career progress & network graph\n\nTry asking: *\"Find me a mentor in AI\"*, *\"Show active batch reunions\"*, or *\"What internships match my profile?\"*"
 };
 
-function getResponse(message) {
+function getResponse(message, isStudent) {
     const lower = message.toLowerCase();
     if (lower.includes('mentor') || lower.includes('guide')) return sampleResponses.mentor;
-    if (lower.includes('job') || lower.includes('intern') || lower.includes('opportunity') || lower.includes('career')) return sampleResponses.job;
-    if (lower.includes('reunion') || lower.includes('batch') || lower.includes('meetup')) return sampleResponses.reunion;
+    if (lower.includes('job') || lower.includes('intern') || lower.includes('opportunity') || lower.includes('career')) {
+        return isStudent
+            ? 'Your **Skill-Matched Jobs** page ranks every active opportunity using the skills in your student profile. Open Job Portal to see exact match scores, matching skills, missing skills, and working Save and Apply actions.'
+            : sampleResponses.job;
+    }
+    if (lower.includes('reunion') || lower.includes('batch') || lower.includes('meetup')) {
+        return isStudent
+            ? 'Batch reunions are an alumni-only feature. I can help you find skill-matched jobs, mentors, or student events instead.'
+            : sampleResponses.reunion;
+    }
     if (lower.includes('event') || lower.includes('workshop') || lower.includes('seminar')) return sampleResponses.event;
-    return sampleResponses.default;
+    return isStudent
+        ? "I'm your student career assistant. I can help you find skill-matched jobs, discover alumni mentors, explore student events, and plan your next career step.\n\nTry asking: *\"What internships match my profile?\"*"
+        : sampleResponses.default;
 }
 
 export default function AIChat() {
+    const { user } = useAuth();
+    const isStudent = user?.role === 'STUDENT';
     const [messages, setMessages] = useState([
-        { role: 'assistant', content: "Hello! 👋 I'm **AlumniConnect AI Assistant**. I'm powered by 6 specialized AI agents and can help you find mentors, discover job opportunities, participate in batch reunions, and answer questions about our alumni network.\n\nHow can I help you today?" }
+        {
+            role: 'assistant',
+            content: isStudent
+                ? "Hello! I'm your **Student Career Assistant**. I can help with skill-matched jobs, alumni mentors, events, and career preparation.\n\nHow can I help you today?"
+                : "Hello! I'm **AlumniConnect AI Assistant**. I can help with mentoring, opportunities, events, and alumni reunions.\n\nHow can I help you today?",
+        },
     ]);
     const [input, setInput] = useState('');
     const [isTyping, setIsTyping] = useState(false);
@@ -38,7 +56,7 @@ export default function AIChat() {
         setIsTyping(true);
 
         setTimeout(() => {
-            setMessages(prev => [...prev, { role: 'assistant', content: getResponse(userMsg) }]);
+            setMessages(prev => [...prev, { role: 'assistant', content: getResponse(userMsg, isStudent) }]);
             setIsTyping(false);
         }, 1000);
     };
@@ -46,9 +64,29 @@ export default function AIChat() {
     const suggestions = [
         'Find me a mentor in AI',
         'What internships match my profile?',
-        'Show active batch reunions',
+        ...(!isStudent ? ['Show active batch reunions'] : []),
         'Show upcoming alumni events',
     ];
+
+    const startVoiceInput = () => {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            setMessages((current) => [...current, { role: 'assistant', content: 'Voice input is not supported by this browser. You can type your question below.' }]);
+            return;
+        }
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'en-IN';
+        recognition.interimResults = false;
+        recognition.onresult = (event) => setInput(event.results[0][0].transcript);
+        recognition.start();
+    };
+
+    const readLatestResponse = () => {
+        const latest = [...messages].reverse().find((message) => message.role === 'assistant');
+        if (!latest || !window.speechSynthesis) return;
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(new SpeechSynthesisUtterance(latest.content.replace(/\*+/g, '')));
+    };
 
     return (
         <div className="flex flex-col h-[calc(100vh-8rem)] animate-fade-in">
@@ -66,10 +104,10 @@ export default function AIChat() {
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
-                    <button className="p-2 rounded-xl hover:bg-surface-800 text-surface-400 hover:text-white transition-all" title="Voice Input">
+                    <button type="button" onClick={startVoiceInput} className="p-2 rounded-xl hover:bg-surface-800 text-surface-400 hover:text-white transition-all" title="Voice Input">
                         <Mic className="w-5 h-5" />
                     </button>
-                    <button className="p-2 rounded-xl hover:bg-surface-800 text-surface-400 hover:text-white transition-all" title="Text-to-Speech">
+                    <button type="button" onClick={readLatestResponse} className="p-2 rounded-xl hover:bg-surface-800 text-surface-400 hover:text-white transition-all" title="Read latest response">
                         <Volume2 className="w-5 h-5" />
                     </button>
                 </div>

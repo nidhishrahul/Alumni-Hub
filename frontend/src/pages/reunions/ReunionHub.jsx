@@ -4,7 +4,8 @@ import { useAuth } from '../../context/AuthContext';
 import {
     PartyPopper, Calendar, MapPin, Users, DollarSign,
     Camera, Megaphone, ArrowLeft, Clock, Crown,
-    AlertCircle, CheckCircle, Vote, Settings
+    AlertCircle, CheckCircle, Vote, Mail, Trash2, Loader2,
+    Building2, GraduationCap
 } from 'lucide-react';
 
 // Import tab components (will create these next)
@@ -26,7 +27,7 @@ const tabs = [
 
 import api from '../../services/api';
 
-const SAMPLE_REUNION_DETAILS = {
+const _SAMPLE_REUNION_DETAILS = {
     '1': {
         id: 1,
         title: 'Silver Jubilee Grand Reunion — Class of 2020',
@@ -117,6 +118,7 @@ export default function ReunionHub() {
     const [error, setError] = useState('');
     const [activeTab, setActiveTab] = useState('dates');
     const [refreshKey, setRefreshKey] = useState(0);
+    const [deleting, setDeleting] = useState(false);
 
     useEffect(() => {
         fetchReunion();
@@ -127,15 +129,9 @@ export default function ReunionHub() {
             const res = await api.get(`/api/reunions/${id}`);
             setReunion(res.data);
             if (res.data.status === 'PLANNING') setActiveTab('dates');
-            else if (res.data.status === 'VENUE_VOTING') setActiveTab('venues');
             else if (res.data.status === 'CONFIRMED') setActiveTab('attendance');
         } catch (err) {
-            console.warn('Backend reunion fetch failed, using sample detail:', err);
-            const sampleData = SAMPLE_REUNION_DETAILS[String(id)] || SAMPLE_REUNION_DETAILS['1'];
-            setReunion(sampleData);
-            if (sampleData.status === 'PLANNING') setActiveTab('dates');
-            else if (sampleData.status === 'VENUE_VOTING') setActiveTab('venues');
-            else if (sampleData.status === 'CONFIRMED') setActiveTab('attendance');
+            setError(err.response?.data?.detail || 'Unable to load this reunion');
         } finally {
             setLoading(false);
         }
@@ -145,25 +141,39 @@ export default function ReunionHub() {
         setRefreshKey(prev => prev + 1);
     };
 
-    const isCoordinator = reunion && reunion.batch.coordinatorUserId === user?.id;
+    const isOrganizer = reunion?.isOrganizer === true;
+
+    const handleDelete = async () => {
+        if (!isOrganizer || deleting) return;
+        const confirmed = window.confirm(
+            `Delete "${reunion.title}"? This permanently removes its votes, attendance, expenses, photos, and announcements.`
+        );
+        if (!confirmed) return;
+
+        setDeleting(true);
+        setError('');
+        try {
+            await api.delete(`/api/reunions/${reunion.id}`);
+            navigate('/reunions');
+        } catch (requestError) {
+            setError(requestError.response?.data?.detail || 'Unable to delete the reunion');
+            setDeleting(false);
+        }
+    };
 
     const getStatusDisplay = () => {
         if (!reunion) return null;
 
         switch (reunion.status) {
             case 'PLANNING':
+            case 'DATE_VOTING':
+            case 'VENUE_VOTING':
+            case 'VOTING':
                 return {
-                    label: 'Date Voting Phase',
+                    label: 'Preference Voting Open',
                     color: 'text-blue-400 bg-blue-500/10 border-blue-500/20',
                     icon: Vote,
-                    description: 'Batch members are voting on preferred dates'
-                };
-            case 'VENUE_VOTING':
-                return {
-                    label: 'Venue Voting Phase',
-                    color: 'text-purple-400 bg-purple-500/10 border-purple-500/20',
-                    icon: MapPin,
-                    description: 'Batch members are voting on preferred venues'
+                    description: 'Verified batch members are voting on both date and venue'
                 };
             case 'CONFIRMED':
                 return {
@@ -188,9 +198,7 @@ export default function ReunionHub() {
             weekday: 'long',
             year: 'numeric',
             month: 'long',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
+            day: 'numeric'
         });
     };
 
@@ -201,7 +209,7 @@ export default function ReunionHub() {
             case 'dates':
                 return true; // Always available
             case 'venues':
-                return reunion.status === 'VENUE_VOTING' || reunion.status === 'CONFIRMED';
+                return true;
             case 'attendance':
             case 'expenses':
             case 'photos':
@@ -266,19 +274,51 @@ export default function ReunionHub() {
                         <div className="flex-1">
                             <h1 className="text-2xl font-black text-white flex items-center gap-3">
                                 {reunion.title}
-                                {isCoordinator && (
+                                {isOrganizer && (
                                     <span className="px-2 py-1 rounded-full text-xs font-medium bg-accent-500/20 text-accent-400 flex items-center gap-1">
                                         <Crown className="w-3 h-3" />
-                                        Coordinator
+                                        Organizer
                                     </span>
                                 )}
                             </h1>
-                            <p className="text-surface-400 text-sm mt-1">{reunion.batch.department} • Class of {reunion.batch.graduationYear}</p>
+                            <p className="mt-1 flex items-center gap-2 text-sm text-surface-400">
+                                {reunion.audienceType === 'WHOLE_BATCH'
+                                    ? <GraduationCap className="h-4 w-4 text-accent-400" />
+                                    : <Building2 className="h-4 w-4 text-primary-400" />}
+                                <span>
+                                    {reunion.audienceType === 'WHOLE_BATCH'
+                                        ? 'Whole batch'
+                                        : `${reunion.targetDepartment} only`} • Class of {reunion.batch.graduationYear}
+                                </span>
+                            </p>
+                            {reunion.organizer && (
+                                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                                    <span className="flex items-center gap-1.5 font-medium text-surface-200">
+                                        <Crown className="h-4 w-4 text-amber-400" />
+                                        Organizer: {reunion.organizer.name}
+                                    </span>
+                                    <a
+                                        href={`mailto:${reunion.organizer.email}`}
+                                        className="flex items-center gap-1.5 text-primary-400 hover:text-primary-300"
+                                    >
+                                        <Mail className="h-4 w-4" />
+                                        {reunion.organizer.email}
+                                    </a>
+                                </div>
+                            )}
                         </div>
-                        {isCoordinator && (
-                            <button className="btn-secondary text-sm flex items-center gap-2">
-                                <Settings className="w-4 h-4" />
-                                Settings
+                        {isOrganizer && (
+                            <button
+                                type="button"
+                                onClick={handleDelete}
+                                disabled={deleting}
+                                className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-400 transition-colors hover:border-red-400 hover:bg-red-500/20 hover:text-red-300 disabled:opacity-50"
+                                title="Delete reunion"
+                            >
+                                {deleting
+                                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                                    : <Trash2 className="h-4 w-4" />}
+                                Delete
                             </button>
                         )}
                     </div>
@@ -366,7 +406,7 @@ export default function ReunionHub() {
                     <DateVotingTab
                         reunion={reunion}
                         user={user}
-                        isCoordinator={isCoordinator}
+                        isCoordinator={isOrganizer}
                         onReunionUpdate={refreshReunion}
                     />
                 )}
@@ -374,7 +414,7 @@ export default function ReunionHub() {
                     <VenueVotingTab
                         reunion={reunion}
                         user={user}
-                        isCoordinator={isCoordinator}
+                        isCoordinator={isOrganizer}
                         onReunionUpdate={refreshReunion}
                     />
                 )}
@@ -382,7 +422,7 @@ export default function ReunionHub() {
                     <AttendanceTab
                         reunion={reunion}
                         user={user}
-                        isCoordinator={isCoordinator}
+                        isOrganizer={isOrganizer}
                         onReunionUpdate={refreshReunion}
                     />
                 )}
@@ -390,7 +430,7 @@ export default function ReunionHub() {
                     <ExpensesTab
                         reunion={reunion}
                         user={user}
-                        isCoordinator={isCoordinator}
+                        isCoordinator={isOrganizer}
                         onReunionUpdate={refreshReunion}
                     />
                 )}
@@ -398,7 +438,7 @@ export default function ReunionHub() {
                     <PhotosTab
                         reunion={reunion}
                         user={user}
-                        isCoordinator={isCoordinator}
+                        isCoordinator={isOrganizer}
                         onReunionUpdate={refreshReunion}
                     />
                 )}
@@ -406,7 +446,7 @@ export default function ReunionHub() {
                     <AnnouncementsTab
                         reunion={reunion}
                         user={user}
-                        isCoordinator={isCoordinator}
+                        isCoordinator={isOrganizer}
                         onReunionUpdate={refreshReunion}
                     />
                 )}

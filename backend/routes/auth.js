@@ -76,6 +76,9 @@ router.post('/register', async (req, res) => {
                 passwordHash,
                 role: normalizedRole,
                 phone: String(phone || '').trim() || null,
+                ...(normalizedRole === 'STUDENT' ? {
+                    studentProfile: { create: {} },
+                } : {}),
                 ...(normalizedRole === 'ALUMNI' ? {
                     alumniProfile: {
                         create: {
@@ -89,7 +92,7 @@ router.post('/register', async (req, res) => {
                     },
                 } : {}),
             },
-            include: { alumniProfile: true },
+            include: { alumniProfile: true, studentProfile: true },
         });
 
         return res.status(201).json(authResponse(user));
@@ -112,7 +115,7 @@ router.post('/login', async (req, res) => {
 
         const user = await prisma.user.findUnique({
             where: { email: normalizedEmail },
-            include: { alumniProfile: true },
+            include: { alumniProfile: true, studentProfile: true },
         });
 
         if (!user || !await bcrypt.compare(password, user.passwordHash)) {
@@ -165,7 +168,7 @@ router.put('/profile', requireAuth, loadUser, async (req, res) => {
             });
         }
 
-        // Handle AlumniProfile upsert
+        // Store career fields in the profile table matching the account role.
         const profileFields = {
             ...(location !== undefined ? { location: location ? String(location).trim() : null } : {}),
             ...(bio !== undefined ? { bio: bio ? String(bio).trim() : null } : {}),
@@ -179,7 +182,22 @@ router.put('/profile', requireAuth, loadUser, async (req, res) => {
             ...(interests !== undefined ? { interests: typeof interests === 'string' ? interests : JSON.stringify(interests) } : {}),
         };
 
-        if (req.user.alumniProfile) {
+        if (req.user.role === 'STUDENT') {
+            const studentProfileFields = {
+                ...(location !== undefined ? { location: location ? String(location).trim() : null } : {}),
+                ...(bio !== undefined ? { bio: bio ? String(bio).trim() : null } : {}),
+                ...(department !== undefined ? { department: String(department || '').trim() || null } : {}),
+                ...(degree !== undefined ? { degree: String(degree || '').trim() || null } : {}),
+                ...(graduationYear !== undefined && !isNaN(Number(graduationYear)) ? { graduationYear: Number(graduationYear) } : {}),
+                ...(skills !== undefined ? { skills: typeof skills === 'string' ? skills : JSON.stringify(skills) } : {}),
+                ...(interests !== undefined ? { interests: typeof interests === 'string' ? interests : JSON.stringify(interests) } : {}),
+            };
+            await prisma.studentProfile.upsert({
+                where: { userId },
+                update: studentProfileFields,
+                create: { userId, ...studentProfileFields },
+            });
+        } else if (req.user.alumniProfile) {
             await prisma.alumniProfile.update({
                 where: { userId },
                 data: profileFields,
@@ -201,7 +219,7 @@ router.put('/profile', requireAuth, loadUser, async (req, res) => {
         // Fetch updated user object
         const updatedUser = await prisma.user.findUnique({
             where: { id: userId },
-            include: { alumniProfile: true },
+            include: { alumniProfile: true, studentProfile: true },
         });
 
         return res.json({

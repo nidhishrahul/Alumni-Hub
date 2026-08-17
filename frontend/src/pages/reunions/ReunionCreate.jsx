@@ -1,26 +1,51 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { 
     Plus, X, Calendar, MapPin, PartyPopper, 
-    Users, Clock, AlertCircle 
+    Users, AlertCircle, Clock, Building2, GraduationCap
 } from 'lucide-react';
+import api from '../../services/api';
 
 export default function ReunionCreate() {
     const { user } = useAuth();
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [departments, setDepartments] = useState([]);
 
     const [formData, setFormData] = useState({
         title: '',
         description: '',
+        audienceType: 'DEPARTMENT',
+        targetDepartment: user?.alumniProfile?.department || '',
+        votingDeadline: '',
         proposedDates: ['', ''],
         venueOptions: [
             { name: '', address: '', mapLink: '' },
             { name: '', address: '', mapLink: '' }
         ]
     });
+
+    useEffect(() => {
+        const loadDepartments = async () => {
+            try {
+                const response = await api.get('/api/reunions/audience/departments');
+                const availableDepartments = response.data.departments || [];
+                setDepartments(availableDepartments);
+                setFormData((current) => ({
+                    ...current,
+                    targetDepartment: current.targetDepartment ||
+                        user?.alumniProfile?.department ||
+                        availableDepartments[0] || '',
+                }));
+            } catch (requestError) {
+                setError(requestError.response?.data?.detail || 'Unable to load batch departments');
+            }
+        };
+
+        if (user?.alumniProfile?.isVerified) loadDepartments();
+    }, [user?.alumniProfile?.department, user?.alumniProfile?.isVerified]);
 
     const handleInputChange = (field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
@@ -88,10 +113,21 @@ export default function ReunionCreate() {
             if (!formData.title.trim() || !formData.description.trim()) {
                 throw new Error('Title and description are required');
             }
+            if (formData.audienceType === 'DEPARTMENT' && !formData.targetDepartment) {
+                throw new Error('Please select a department for this reunion');
+            }
 
             const validDates = formData.proposedDates.filter(date => date.trim());
             if (validDates.length < 2) {
                 throw new Error('Please provide at least 2 proposed dates');
+            }
+            const deadline = new Date(formData.votingDeadline);
+            if (!formData.votingDeadline || Number.isNaN(deadline.getTime()) || deadline <= new Date()) {
+                throw new Error('Please choose a future voting deadline');
+            }
+
+            if (validDates.some((date) => new Date(date) <= deadline)) {
+                throw new Error('Voting must close before every proposed reunion date');
             }
 
             const validVenues = formData.venueOptions.filter(venue => venue.name.trim() && venue.address.trim());
@@ -100,7 +136,7 @@ export default function ReunionCreate() {
             }
 
             const token = localStorage.getItem('token');
-            const response = await fetch('http://localhost:3001/api/reunions', {
+            const response = await fetch('/api/reunions', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -109,6 +145,11 @@ export default function ReunionCreate() {
                 body: JSON.stringify({
                     title: formData.title.trim(),
                     description: formData.description.trim(),
+                    audienceType: formData.audienceType,
+                    targetDepartment: formData.audienceType === 'DEPARTMENT'
+                        ? formData.targetDepartment
+                        : null,
+                    votingDeadline: deadline.toISOString(),
                     proposedDates: validDates,
                     venueOptions: validVenues
                 })
@@ -128,7 +169,7 @@ export default function ReunionCreate() {
         }
     };
 
-    // Check if user is verified alumni (coordinators should be verified alumni)
+    // Reunion membership is restricted to verified alumni in the same batch.
     if (user?.role !== 'ALUMNI' || !user?.alumniProfile?.isVerified) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-surface-950 p-8">
@@ -138,7 +179,7 @@ export default function ReunionCreate() {
                     </div>
                     <h2 className="text-2xl font-black text-white mb-3">Access Restricted</h2>
                     <p className="text-surface-400 mb-6">
-                        Only verified alumni who are batch coordinators can create reunions.
+                        Only verified alumni can create and access batch reunions.
                     </p>
                     <button 
                         onClick={() => navigate('/reunions')} 
@@ -162,7 +203,7 @@ export default function ReunionCreate() {
                     <div>
                         <h1 className="text-3xl font-black text-white">Create Batch Reunion</h1>
                         <p className="text-surface-400">
-                            Organize a memorable get-together for your graduating batch
+                            {user?.alumniProfile?.department} · Class of {user?.alumniProfile?.graduationYear}
                         </p>
                     </div>
                 </div>
@@ -177,6 +218,64 @@ export default function ReunionCreate() {
                         </h3>
                         
                         <div className="space-y-6">
+                            <div>
+                                <label className="block text-sm font-medium text-surface-300 mb-3">
+                                    Who is this reunion for? *
+                                </label>
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => handleInputChange('audienceType', 'DEPARTMENT')}
+                                        className={'rounded-xl border p-4 text-left transition-all ' +
+                                            (formData.audienceType === 'DEPARTMENT'
+                                                ? 'border-primary-500 bg-primary-500/15'
+                                                : 'border-surface-700 bg-surface-800/30 hover:border-surface-500')}
+                                    >
+                                        <Building2 className="mb-3 h-5 w-5 text-primary-400" />
+                                        <span className="block font-semibold text-white">Department only</span>
+                                        <span className="mt-1 block text-xs text-surface-400">
+                                            Only the selected department in this graduation batch
+                                        </span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleInputChange('audienceType', 'WHOLE_BATCH')}
+                                        className={'rounded-xl border p-4 text-left transition-all ' +
+                                            (formData.audienceType === 'WHOLE_BATCH'
+                                                ? 'border-accent-500 bg-accent-500/15'
+                                                : 'border-surface-700 bg-surface-800/30 hover:border-surface-500')}
+                                    >
+                                        <GraduationCap className="mb-3 h-5 w-5 text-accent-400" />
+                                        <span className="block font-semibold text-white">Whole batch</span>
+                                        <span className="mt-1 block text-xs text-surface-400">
+                                            Every verified department in Class of {user?.alumniProfile?.graduationYear}
+                                        </span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            {formData.audienceType === 'DEPARTMENT' && (
+                                <div>
+                                    <label className="block text-sm font-medium text-surface-300 mb-2">
+                                        Department *
+                                    </label>
+                                    <select
+                                        value={formData.targetDepartment}
+                                        onChange={(event) => handleInputChange('targetDepartment', event.target.value)}
+                                        className="input-field"
+                                        required
+                                    >
+                                        <option value="" disabled>Select a department</option>
+                                        {departments.map((department) => (
+                                            <option key={department} value={department}>{department}</option>
+                                        ))}
+                                    </select>
+                                    <p className="mt-2 text-xs text-surface-500">
+                                        Only verified {formData.targetDepartment || 'selected department'} alumni from this class will see and receive notifications for it.
+                                    </p>
+                                </div>
+                            )}
+
                             <div>
                                 <label className="block text-sm font-medium text-surface-300 mb-2">
                                     Reunion Title *
@@ -204,6 +303,24 @@ export default function ReunionCreate() {
                                     required
                                 />
                             </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-surface-300 mb-2">
+                                    Voting Deadline *
+                                </label>
+                                <input
+                                    type="datetime-local"
+                                    value={formData.votingDeadline}
+                                    onChange={(e) => handleInputChange('votingDeadline', e.target.value)}
+                                    className="input-field"
+                                    required
+                                />
+                                <p className="text-xs text-surface-500 mt-2 flex items-center gap-2">
+                                    <Clock className="w-3.5 h-3.5" />
+                                    Date and venue results are finalized automatically when voting closes.
+                                </p>
+                            </div>
+
                         </div>
                     </div>
 
@@ -231,7 +348,7 @@ export default function ReunionCreate() {
                                 <div key={index} className="flex items-center gap-4">
                                     <div className="flex-1">
                                         <input
-                                            type="datetime-local"
+                                            type="date"
                                             value={date}
                                             onChange={(e) => updateProposedDate(index, e.target.value)}
                                             className="input-field"
@@ -341,7 +458,7 @@ export default function ReunionCreate() {
                         </div>
                         
                         <p className="text-xs text-surface-500 mt-4">
-                            Provide 2-4 venue options. Your batchmates will vote after the date is finalized.
+                            Provide 2-4 venue options. Voting closes automatically at the deadline above.
                         </p>
                     </div>
 

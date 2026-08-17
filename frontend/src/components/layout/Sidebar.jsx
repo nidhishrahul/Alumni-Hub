@@ -1,8 +1,8 @@
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import {
     LayoutDashboard, Users, GraduationCap, Briefcase, Calendar,
-    MessageSquare, BarChart3, Network, UserCircle, LogOut, Bot,
+    BarChart3, Network, UserCircle, LogOut, Bot,
     Building2, Heart, ChevronLeft, ChevronRight, PartyPopper,
     ShieldCheck // ADDED FOR VERIFICATION FEATURE
 } from 'lucide-react';
@@ -13,7 +13,6 @@ const navItems = {
         { path: '/student/dashboard', label: 'Dashboard', icon: LayoutDashboard },
         { path: '/student/mentors', label: 'Find Mentors', icon: GraduationCap },
         { path: '/student/jobs', label: 'Job Portal', icon: Briefcase },
-        { path: '/reunions', label: 'Batch Reunions', icon: PartyPopper },
         { path: '/events', label: 'Events', icon: Calendar },
         { path: '/chat', label: 'AI Assistant', icon: Bot },
         { path: '/network', label: 'Network', icon: Network },
